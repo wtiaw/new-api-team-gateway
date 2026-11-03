@@ -2,6 +2,7 @@ package dto
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"slices"
@@ -12,14 +13,16 @@ import (
 )
 
 type ChannelSettings struct {
-	TaskPluginKey             string `json:"task_plugin_key,omitempty"`
-	ForceFormat               bool   `json:"force_format,omitempty"`
-	ThinkingToContent         bool   `json:"thinking_to_content,omitempty"`
-	Proxy                     string `json:"proxy"`
-	PassThroughBodyEnabled    bool   `json:"pass_through_body_enabled,omitempty"`
-	ResponsesWebSocketEnabled bool   `json:"responses_websocket_enabled,omitempty"`
-	SystemPrompt              string `json:"system_prompt,omitempty"`
-	SystemPromptOverride      bool   `json:"system_prompt_override,omitempty"`
+	// SalesMultiplier is the host gateway's channel sale price factor. Nil keeps legacy pricing (1x).
+	SalesMultiplier           *float64 `json:"sales_multiplier,omitempty"`
+	TaskPluginKey             string   `json:"task_plugin_key,omitempty"`
+	ForceFormat               bool     `json:"force_format,omitempty"`
+	ThinkingToContent         bool     `json:"thinking_to_content,omitempty"`
+	Proxy                     string   `json:"proxy"`
+	PassThroughBodyEnabled    bool     `json:"pass_through_body_enabled,omitempty"`
+	ResponsesWebSocketEnabled bool     `json:"responses_websocket_enabled,omitempty"`
+	SystemPrompt              string   `json:"system_prompt,omitempty"`
+	SystemPromptOverride      bool     `json:"system_prompt_override,omitempty"`
 	// TaskExtendPluginKeys lists the task plugins a New API channel (type 60)
 	// is extended with. The upstream gateway may host many plugins, so the
 	// channel serves every listed plugin's models while the request still pins
@@ -35,6 +38,18 @@ type ChannelSettings struct {
 	// TLSInsecureSkipVerify accepts upstream certificates that fail
 	// verification, such as self-signed ones, for this channel only.
 	TLSInsecureSkipVerify bool `json:"tls_insecure_skip_verify,omitempty"`
+}
+
+// ValidateSalesMultiplier rejects invalid discounts before persistence.
+func (s ChannelSettings) ValidateSalesMultiplier() error {
+	if s.SalesMultiplier == nil {
+		return nil
+	}
+	r := *s.SalesMultiplier
+	if math.IsNaN(r) || math.IsInf(r, 0) || r <= 0 || r > 100 {
+		return fmt.Errorf("sales_multiplier must be finite, greater than 0 and at most 100")
+	}
+	return nil
 }
 
 // BindsTaskPlugin reports whether the channel is bound to the task plugin,

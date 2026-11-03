@@ -10,3 +10,22 @@ docs
 /web/node_modules
 /web/dist
 !THIRD-PARTY-LICENSES.md
+
+# Independent development secrets and build outputs
+.env
+**/.env
+.artifacts
+.tools
+.openviking
+tests/team-gateway/node_modules
+
+# Private operator material must not enter Docker build contexts.
+team-gateway-notes
+scripts/cpa
+deploy/cpa
+deploy/**/data
+deploy/**/backups
+deploy/**/releases
+*.pem
+*.key
+*.dump

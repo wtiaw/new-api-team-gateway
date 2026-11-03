@@ -24,7 +24,13 @@ type PricingPluginVariant struct {
 	BillingUsageExamples []jsplugin.UsageExample              `json:"billing_usage_examples,omitempty"`
 }
 
+type ChannelSalesRange struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
+}
+
 type Pricing struct {
+	ChannelSalesRanges     map[string]ChannelSalesRange         `json:"channel_sales_ranges,omitempty"`
 	BillingPluginVariants  []PricingPluginVariant               `json:"billing_plugin_variants,omitempty"`
 	ModelName              string                               `json:"model_name"`
 	Description            string                               `json:"description,omitempty"`
@@ -228,6 +234,46 @@ func updatePricing() {
 	}
 
 	modelGroupsMap := make(map[string]*types.Set[string])
+	var pricingChannels []Channel
+	if err := DB.Select("id", "setting").Where("status = ?", common.ChannelStatusEnabled).Find(&pricingChannels).Error; err != nil {
+		common.SysError("failed to load channel sales multipliers for pricing: " + err.Error())
+		return
+	}
+	channelSales := make(map[int]float64, len(pricingChannels))
+	for _, ch := range pricingChannels {
+		settings := dto.ChannelSettings{}
+		if ch.Setting != nil && *ch.Setting != "" {
+			if common.UnmarshalJsonStr(*ch.Setting, &settings) != nil {
+				continue
+			}
+		}
+		if settings.ValidateSalesMultiplier() != nil {
+			continue
+		}
+		r := 1.0
+		if settings.SalesMultiplier != nil {
+			r = *settings.SalesMultiplier
+		}
+		channelSales[ch.Id] = r
+	}
+	modelSalesRanges := make(map[string]map[string]ChannelSalesRange)
+	for _, ability := range enableAbilities {
+		r, ok := channelSales[ability.ChannelId]
+		if !ok {
+			continue
+		}
+		if modelSalesRanges[ability.Model] == nil {
+			modelSalesRanges[ability.Model] = make(map[string]ChannelSalesRange)
+		}
+		span, exists := modelSalesRanges[ability.Model][ability.Group]
+		if !exists {
+			span = ChannelSalesRange{Min: r, Max: r}
+		} else {
+			span.Min = min(span.Min, r)
+			span.Max = max(span.Max, r)
+		}
+		modelSalesRanges[ability.Model][ability.Group] = span
+	}
 
 	for _, ability := range enableAbilities {
 		groups, ok := modelGroupsMap[ability.Model]
@@ -328,6 +374,7 @@ func updatePricing() {
 	for model, groups := range modelGroupsMap {
 		pricing := Pricing{
 			ModelName:              model,
+			ChannelSalesRanges:     modelSalesRanges[model],
 			EnableGroup:            groups.Items(),
 			SupportedEndpointTypes: modelSupportEndpointTypes[model],
 		}

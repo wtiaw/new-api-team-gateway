@@ -42,7 +42,7 @@ import {
   useSystemConfigStore,
 } from '@/stores/system-config-store'
 
-import type { UsageLog } from '../../data/schema'
+import { usageLogSchema, type UsageLog } from '../../data/schema'
 import { renderAuditContent } from '../../lib/format'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
@@ -225,5 +225,46 @@ describe('quota adjustment log localization', () => {
       renderAuditContent({ op: { action: 'unknown', params: {} } }, i18n.t)
     ).toBeNull()
     expect(renderAuditContent({}, i18n.t)).toBeNull()
+  })
+
+  test('administrator details identify personal fallback caused by an exhausted team cap', async () => {
+    const i18n = createInstance()
+    await i18n.init({ lng: 'en', resources: { en, zh } })
+    const log = usageLogSchema.parse({
+      id: 21,
+      content: '',
+      user_id: 4,
+      created_at: 1,
+      type: 2,
+      quota: 63,
+      username: 'lixiang',
+      model_name: 'gpt-test',
+      other: JSON.stringify({
+        billing_source: 'wallet',
+        funding_policy: 'team_first',
+        funding_fallback_reason: 'Team daily limit reached',
+      }),
+    })
+    render(
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={queryClient}>
+          <DetailsDialog
+            log={log}
+            isAdmin
+            isRoot
+            open
+            onOpenChange={() => undefined}
+          />
+        </QueryClientProvider>
+      </I18nextProvider>
+    )
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText('Personal balance')).toBeVisible()
+    expect(dialog.getByText('Team daily limit reached')).toBeVisible()
+    await act(() => i18n.changeLanguage('zh'))
+    expect(dialog.getByText(zh.translation['Personal balance'])).toBeVisible()
+    expect(
+      dialog.getByText(zh.translation['Team daily limit reached'])
+    ).toBeVisible()
   })
 })

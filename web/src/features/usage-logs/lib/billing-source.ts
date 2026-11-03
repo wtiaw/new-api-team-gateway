@@ -42,3 +42,19 @@ export function shouldShowBillingSource(
   }
   return (input.subscriptions?.length ?? 0) > 0
 }
+
+/** A stored source is historical fact and must not depend on current plans. */
+export function getFundingSourceLabel(
+  source: string | undefined
+): string | undefined {
+  switch (source) {
+    case 'team':
+      return 'Team balance'
+    case 'wallet':
+      return 'Personal balance'
+    case 'subscription':
+      return 'Subscription'
+    default:
+      return undefined
+  }
+}

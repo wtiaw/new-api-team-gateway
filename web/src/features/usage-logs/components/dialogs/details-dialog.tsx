@@ -69,6 +69,7 @@ import { cn } from '@/lib/utils'
 
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
+import { getFundingSourceLabel } from '../../lib/billing-source'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -232,10 +233,28 @@ function BillingBreakdown(props: {
     }
   }
 
+  if (other.channel_sales_multiplier != null) {
+    rows.push({
+      label: t('Channel Sales Multiplier'),
+      value: `${formatRatio(other.channel_sales_multiplier)}x`,
+    })
+    rows.push({
+      label: t('Group Ratio'),
+      value: `${formatRatio(other.base_group_ratio ?? 1)}x`,
+    })
+    rows.push({
+      label: t('Effective Price Multiplier'),
+      value: `${formatRatio(other.effective_price_multiplier ?? other.group_ratio ?? 1)}x`,
+    })
+  }
   const userGR = other.user_group_ratio
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio
-  if (effectiveGR != null && Number.isFinite(effectiveGR)) {
+  if (
+    other.channel_sales_multiplier == null &&
+    effectiveGR != null &&
+    Number.isFinite(effectiveGR)
+  ) {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
       value: `${formatRatio(effectiveGR)}x`,
@@ -529,6 +548,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
+  const fundingLabel = getFundingSourceLabel(other?.billing_source)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
@@ -1302,6 +1322,24 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   {other.stream_status.errors.join('\n')}
                 </pre>
               )}
+          </DetailSection>
+        )}
+
+        {isConsume && fundingLabel && (
+          <DetailSection label={t('Actual funding source')}>
+            <DetailRow
+              label={t('Actual funding source')}
+              value={t(fundingLabel)}
+            />
+            {other?.billing_source === 'team' && other.team_id != null && (
+              <DetailRow label={t('Team')} value={`#${other.team_id}`} />
+            )}
+            {other?.funding_fallback_reason && (
+              <DetailRow
+                label={t('Fallback reason')}
+                value={t(other.funding_fallback_reason)}
+              />
+            )}
           </DetailSection>
         )}
 

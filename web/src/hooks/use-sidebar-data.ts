@@ -74,6 +74,11 @@ export function useSidebarData(): SidebarData {
         title: t('General'),
         items: [
           {
+            title: t('Teams'),
+            url: '/teams',
+            icon: Users,
+          },
+          {
             title: t('Overview'),
             url: '/dashboard/overview',
             icon: Activity,

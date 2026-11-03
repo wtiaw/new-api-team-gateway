@@ -196,6 +196,9 @@ export interface LogOtherData {
   model_ratio?: number
   completion_ratio?: number
   model_price?: number
+  channel_sales_multiplier?: number
+  base_group_ratio?: number
+  effective_price_multiplier?: number
   group_ratio?: number
   user_group_ratio?: number
   cache_ratio?: number
@@ -247,6 +250,9 @@ export interface LogOtherData {
   is_system_prompt_overwritten?: boolean
   po?: string[]
   billing_source?: string
+  team_id?: number
+  funding_policy?: string
+  funding_fallback_reason?: string
   group?: string
   stream_status?: {
     status?: string

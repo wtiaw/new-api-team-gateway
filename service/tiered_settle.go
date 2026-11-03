@@ -204,6 +204,9 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.B
 // estimate before sending. If the initial group was free and skipped
 // pre-consume, switching to a paid group creates the session at that point.
 func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.NewAPIError {
+	if relayInfo == nil {
+		return nil
+	}
 	snap, err := refreshTieredBillingGroup(relayInfo)
 	if err != nil {
 		return types.NewErrorWithStatusCode(
@@ -214,7 +217,19 @@ func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon
 		)
 	}
 	if snap == nil {
-		return nil
+		ratio := relayInfo.PriceData.GroupRatioInfo
+		if !relayInfo.ChannelPricingActive || relayInfo.PriceData.QuotaBeforeGroup == 0 {
+			return nil
+		}
+		quota, err := common.QuotaFromFloatStrict(relayInfo.PriceData.QuotaBeforeGroup * ratio.GroupRatio)
+		if err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeModelPriceError, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		relayInfo.PriceData.QuotaToPreConsume = quota
+		if quota > 0 {
+			relayInfo.PriceData.FreeModel = false
+		}
+		return PreConsumeBilling(c, quota, relayInfo)
 	}
 	if snap.GroupRatio == 0 {
 		// Paid-to-free keeps FreeModel as-is: FreeModel means "pre-consume was
@@ -228,6 +243,9 @@ func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon
 	relayInfo.PriceData.FreeModel = false
 
 	if relayInfo.Billing == nil {
+		return PreConsumeBilling(c, snap.EstimatedQuotaAfterGroup, relayInfo)
+	}
+	if relayInfo.ChannelPricingActive {
 		return PreConsumeBilling(c, snap.EstimatedQuotaAfterGroup, relayInfo)
 	}
 	if err := relayInfo.Billing.Reserve(snap.EstimatedQuotaAfterGroup); err != nil {

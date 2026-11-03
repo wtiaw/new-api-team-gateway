@@ -44,3 +44,36 @@ relaykit/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
 go.work
 go.work.sum
+
+# Team gateway local development
+.artifacts/
+.tools/
+.openviking/
+deploy/team-gateway/.env
+tests/team-gateway/__pycache__/
+tests/team-gateway/node_modules/
+
+# Private operational records and machine-specific production tooling.
+/team-gateway-notes/
+/deploy/cpa/
+/scripts/cpa/
+/deploy/team-gateway/.env.example
+/deploy/team-gateway/Caddyfile.ip
+/deploy/team-gateway/Caddyfile.dias
+/deploy/team-gateway/backup.cron
+/scripts/team-gateway/activate-server-domain.py
+/scripts/team-gateway/activate-server-proxy.py
+/scripts/team-gateway/initialize-server.py
+/tests/team-gateway/server-ui-smoke.cjs
+/deploy/**/data/
+/deploy/**/backups/
+/deploy/**/releases/
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+
+# Python bytecode from local tooling
+__pycache__/
+*.py[cod]

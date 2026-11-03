@@ -664,3 +664,21 @@ it('shows provider count, price range and missing-price status in both list and 
   expect(screen.getByText('0.4 – 0.8/s')).toBeVisible()
   expect(screen.getByText('$0.4 – $0.8')).toBeVisible()
 })
+
+it('labels catalog prices before channel factors and scopes their range to the selected group', () => {
+  const priced = {
+    ...model,
+    channel_sales_ranges: {
+      default: { min: 0.3, max: 1 },
+      premium: { min: 0.5, max: 0.5 },
+    },
+  }
+  const view = render(
+    <ModelPriceCell model={priced} options={{ selectedGroup: 'default' }} />
+  )
+  expect(screen.getByText(/channel factor 0.3x–1x/)).toBeVisible()
+  view.rerender(
+    <ModelPriceCell model={priced} options={{ selectedGroup: 'premium' }} />
+  )
+  expect(screen.getByText(/channel factor 0.5x–0.5x/)).toBeVisible()
+})

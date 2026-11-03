@@ -2,6 +2,7 @@ package controller
 
 import (
 	"maps"
+	"slices"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -57,6 +58,16 @@ func GetPricing(c *gin.Context) {
 
 	usableGroup = service.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	pricing = slices.Clone(pricing)
+	for i := range pricing {
+		spans := make(map[string]model.ChannelSalesRange)
+		for g, span := range pricing[i].ChannelSalesRanges {
+			if _, ok := usableGroup[g]; ok {
+				spans[g] = span
+			}
+		}
+		pricing[i].ChannelSalesRanges = spans
+	}
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {

@@ -337,6 +337,11 @@ type RecordConsumeLogParams struct {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	if c != nil && c.GetString("team_reservation_id") != "" {
+		if err := RecordTeamFundingUsage(c.GetString("team_reservation_id"), params.PromptTokens, params.CompletionTokens); err != nil {
+			common.SysError(err.Error())
+		}
+	}
 	if !common.LogConsumeEnabled {
 		return
 	}

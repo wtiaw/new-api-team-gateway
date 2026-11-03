@@ -93,6 +93,9 @@ function formatRatioCompact(ratio: number | undefined): string {
 }
 
 function getGroupRatio(other: LogOtherData | null): number | null {
+  if (other?.effective_price_multiplier != null) {
+    return other.effective_price_multiplier
+  }
   const userGroupRatio = other?.user_group_ratio
   if (
     userGroupRatio != null &&
@@ -325,17 +328,32 @@ function buildTypeDetailSegments(
         userGroupRatio != null &&
         Number.isFinite(userGroupRatio) &&
         userGroupRatio !== -1
-      const effectiveRatio = isUserGroup ? userGroupRatio : groupRatio
+      const effectiveRatio =
+        other.effective_price_multiplier ??
+        (isUserGroup ? userGroupRatio : groupRatio)
       const ratioLabel = isUserGroup
         ? t('User Exclusive Ratio')
         : t('Group Ratio')
 
-      if (effectiveRatio != null && Number.isFinite(effectiveRatio)) {
+      if (
+        other.channel_sales_multiplier == null &&
+        effectiveRatio != null &&
+        Number.isFinite(effectiveRatio)
+      ) {
         segments.push({
           text: `${ratioLabel} ${formatRatioCompact(effectiveRatio)}x`,
         })
       }
     }
+  }
+
+  if (
+    other.channel_sales_multiplier != null &&
+    other.effective_price_multiplier != null
+  ) {
+    segments.push({
+      text: `${t('Channel Sales Multiplier')} ${formatRatioCompact(other.channel_sales_multiplier)}x · ${t('Group Ratio')} ${formatRatioCompact(other.base_group_ratio)}x · ${t('Effective Price Multiplier')} ${formatRatioCompact(other.effective_price_multiplier)}x`,
+    })
   }
 
   if (other.is_system_prompt_overwritten) {

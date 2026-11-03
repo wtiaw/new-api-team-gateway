@@ -292,3 +292,17 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 
 	assert.Nil(t, channel2advancedCustomConfig[401])
 }
+
+func TestPricingChannelSalesRanges(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	for i, r := range []float64{0.3, 0.5, 1} {
+		ch := &Channel{Id: 800 + i, Type: 1, Key: "fixture", Status: common.ChannelStatusEnabled, Name: "sales"}
+		ch.SetSetting(dto.ChannelSettings{SalesMultiplier: &r})
+		require.NoError(t, DB.Create(ch).Error)
+		insertPricingEndpointAbility(t, ch.Id, "channel-price-test")
+	}
+	InvalidatePricingCache()
+	rows := GetPricing()
+	require.Len(t, rows, 1)
+	require.Equal(t, ChannelSalesRange{Min: 0.3, Max: 1}, rows[0].ChannelSalesRanges["default"])
+}

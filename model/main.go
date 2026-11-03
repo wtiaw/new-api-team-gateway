@@ -380,6 +380,12 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := MigrateTeams(DB); err != nil {
+		return err
+	}
+	if err := MigrateTeamFunding(DB); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}

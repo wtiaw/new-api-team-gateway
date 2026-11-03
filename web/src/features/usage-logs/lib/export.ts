@@ -114,6 +114,11 @@ export function downloadCsv(filename: string, lines: string[]): void {
   const blob = new Blob(['\uFEFF', ...lines], {
     type: 'text/csv;charset=utf-8',
   })
+  downloadBlob(filename, blob)
+}
+
+/** Save authenticated file responses without navigating away from the app. */
+export function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

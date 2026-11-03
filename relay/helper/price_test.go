@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -802,3 +803,64 @@ func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
 
 func (s *priceTestReservation) ReserveBeforeSubmit(quota int) error { return s.Reserve(quota) }
+
+func TestChannelSalesMultiplierCombinesGroupAndFreezesPerRequest(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(k, v string) error { saved[k] = v; return nil }))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"group_ratio_setting.group_ratio":       `{"default":1,"discount":0.5}`,
+		"group_ratio_setting.group_group_ratio": `{"vip":{"default":0.8}}`,
+	}))
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{UserGroup: "default", UsingGroup: "default"}
+	for i, ratio := range []float64{0.3, 0.5, 1} {
+		ctx.Set("channel_id", i+1)
+		common.SetContextKey(ctx, constant.ContextKeyChannelSetting, dto.ChannelSettings{SalesMultiplier: &ratio})
+		got := HandleGroupRatio(ctx, info)
+		require.InDelta(t, ratio, got.GroupRatio, 1e-12)
+	}
+	ratio := 0.9
+	ctx.Set("channel_id", 1)
+	common.SetContextKey(ctx, constant.ContextKeyChannelSetting, dto.ChannelSettings{SalesMultiplier: &ratio})
+	require.InDelta(t, 0.3, HandleGroupRatio(ctx, info).GroupRatio, 1e-12, "same request retains the first price for channel A")
+	ctx.Set("auto_group", "discount")
+	require.InDelta(t, 0.15, HandleGroupRatio(ctx, info).GroupRatio, 1e-12)
+	ctx.Set("auto_group", "default")
+	info.UserGroup = "vip"
+	require.InDelta(t, 0.24, HandleGroupRatio(ctx, info).GroupRatio, 1e-12, "native group override combines with channel price")
+	fresh := &relaycommon.RelayInfo{UserGroup: "default", UsingGroup: "default"}
+	require.InDelta(t, 0.9, HandleGroupRatio(ctx, fresh).GroupRatio, 1e-12)
+}
+
+func TestChannelSalesMultiplierAffectsLegacyAndExpressionCharges(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(k, v string) error { saved[k] = v; return nil }))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+		"billing_setting.billing_mode":    `{"channel-expr":"tiered_expr"}`,
+		"billing_setting.billing_expr":    `{"channel-expr":"tier(\"base\", p * 2)"}`,
+	}))
+	original := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(original)) })
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"channel-legacy":1}`))
+	for _, name := range []string{"channel-legacy", "channel-expr"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			ratio := 0.3
+			ctx.Set("channel_id", 1)
+			common.SetContextKey(ctx, constant.ContextKeyChannelSetting, dto.ChannelSettings{SalesMultiplier: &ratio})
+			info := &relaycommon.RelayInfo{OriginModelName: name, UserGroup: "default", UsingGroup: "default", BillingRequestInput: &billingexpr.RequestInput{}}
+			price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+			require.NoError(t, err)
+			require.Equal(t, 300, price.QuotaToPreConsume)
+			if info.TieredBillingSnapshot != nil {
+				ok, quota, _ := service.TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 0})
+				require.True(t, ok)
+				require.Equal(t, 300, quota)
+			}
+		})
+	}
+}

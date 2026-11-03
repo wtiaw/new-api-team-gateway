@@ -1,3 +1,5 @@
+> **团队额度版 fork**：本仓库由 [wtiaw/new-api-team-gateway](https://github.com/wtiaw/new-api-team-gateway) 维护，新增团队资金与成员限额。请先阅读[团队版 README](README.md)和[开发部署指南](README.team-gateway.md)。下方完整保留 QuantumNous / New API 上游原文，官方镜像不包含本 fork 的团队扩展。
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)

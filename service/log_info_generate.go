@@ -186,9 +186,24 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) 
 	if relayInfo == nil || other == nil {
 		return
 	}
+	ratio := relayInfo.PriceData.GroupRatioInfo
+	if ratio.ChannelSalesMultiplier > 0 {
+		other.SetPublic("channel_sales_multiplier", ratio.ChannelSalesMultiplier)
+		other.SetPublic("base_group_ratio", ratio.BaseGroupRatio)
+		other.SetPublic("effective_price_multiplier", ratio.GroupRatio)
+	}
 	// billing_source: "wallet" or "subscription"
 	if relayInfo.BillingSource != "" {
 		other.SetPublic("billing_source", relayInfo.BillingSource)
+	}
+	if relayInfo.TeamID > 0 {
+		other.SetPublic("team_id", relayInfo.TeamID)
+	}
+	if relayInfo.FundingPolicy != "" {
+		other.SetPublic("funding_policy", relayInfo.FundingPolicy)
+	}
+	if relayInfo.FundingFallbackReason != "" {
+		other.SetPublic("funding_fallback_reason", relayInfo.FundingFallbackReason)
 	}
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other.SetPublic("billing_preference", relayInfo.UserSetting.BillingPreference)

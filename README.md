@@ -1,3 +1,78 @@
+# New API · 团队额度版
+
+基于 [QuantumNous/new-api](https://github.com/QuantumNous/new-api) 的团队网关 fork，维护于 [wtiaw/new-api-team-gateway](https://github.com/wtiaw/new-api-team-gateway)。保留 New API 的模型转发、渠道管理、个人钱包和原生控制台，增加独立团队钱包、成员额度策略及团队用量管理。
+
+**上游基线：** `v1.0.0-rc.47` / `e835b1bfc43b565d625537830dbfb19328925134`。这是包含团队扩展的独立版本，不是 QuantumNous 的官方发行版；上游基线为 RC。许可证、原作者署名、版权头与上游项目资料均保留。
+
+[![Team Gateway CI](https://github.com/wtiaw/new-api-team-gateway/actions/workflows/team-gateway-ci.yml/badge.svg?branch=team-gateway)](https://github.com/wtiaw/new-api-team-gateway/actions/workflows/team-gateway-ci.yml)
+
+[详细使用与部署](README.team-gateway.md) · [分支与升级维护](FORK_MAINTENANCE.md) · [团队版更新记录](CHANGELOG.team-gateway.md) · [AGPL-3.0](LICENSE)
+
+## 团队版提供什么
+
+| 能力 | 行为 |
+| --- | --- |
+| 团队管理 | 系统管理员管理所有团队、团队管理员、成员、团队余额与限额；团队管理员管理本团队成员、邀请、限额和团队记录 |
+| 独立资金 | 团队共享钱包与成员个人钱包独立，团队不会向个人余额划拨资金 |
+| 成员日／周额度 | 同一个团队设置统一额度标准，但对每位成员分别计数；不是全队合计消费上限 |
+| 额度来源 | API 密钥直接切换团队优先、个人优先、仅团队、仅个人；有效团队成员默认团队优先 |
+| 请求后结算 | 团队请求按实际费用结算，允许最后一笔和已放行并发请求使余额或剩余额度为负；额度不足后，后续请求按策略停止或切换个人余额 |
+| 邀请 | 链接邀请、有效期、单次接受、撤销、接受者与接受时间；非系统管理员最多加入一个有效团队 |
+| 概览与明细 | 成员只看本人团队用量；管理员看全队并可多选成员对比趋势；明细显示用户名、密钥名称、实际额度来源，默认每页20条 |
+| 渠道销售倍率 | 标准模型价格叠加选中渠道的销售倍率和原生分组倍率；可在同一分组配置不同供应商 |
+| CPA 接入 | CPA 可作为独立上游资源池，New API 继续负责用户、团队、路由和计费 |
+
+### 额度语义示例
+
+团队设置每日 `$5`、每周 `$25`，有甲、乙两名成员：**甲、乙各自**每天最多使用 `$5`、每周最多使用 `$25` 的团队资金，二者都从同一个团队钱包扣款。个人钱包没有这两个周期限制，仍受个人可用余额及 API 密钥自身限制约束。
+
+团队额度设为 `0` 表示该周期不能再使用团队资金；不限额使用界面提供的不限额状态。团队优先策略在团队资金不可用时才尝试个人余额，系统管理员可禁止个人备用。团队记录只含团队付费记录；系统管理员在通用使用日志中查看实际扣费来源。
+
+## 本地用 Docker 开发
+
+需要 Docker Desktop（Linux 容器）和 PowerShell；Python 3.12 用于可选验收脚本。
+
+```powershell
+git clone --branch team-gateway https://github.com/wtiaw/new-api-team-gateway.git
+cd new-api-team-gateway
+.\scripts\team-gateway\start-local.ps1 -Build
+```
+
+访问 <http://localhost:18310>。首次启动会随机生成 `deploy/team-gateway/.env` 并初始化空数据库；管理员用户名为 `admin`，密码从该文件的 `ADMIN_PASSWORD` 读取。已有数据库不会被重复初始化或重置密码。
+
+本地服务包含 New API、PostgreSQL、Redis 和模拟上游，端口只绑定本机。构建工具、数据库与依赖镜像版本固定在 `deploy/team-gateway/versions.json` 及 Compose 文件中。修改代码后重新运行上述命令；脚本不会自动创建真实供应商渠道。
+
+## 部署与资源池
+
+生产部署使用 [compose.server.yaml](deploy/team-gateway/compose.server.yaml)，配置模板见 [server.env.example](deploy/team-gateway/server.env.example)，完整步骤见 [部署说明](README.team-gateway.md#服务器部署)。镜像从此 fork 的源码构建；**上游官方镜像不包含本仓库的团队功能**。仓库当前提供源码及构建方式，没有宣称已发布可直接拉取的团队版镜像。
+
+```text
+用户 / Codex / CCS / 其他客户端
+             │
+             ▼
+     New API 团队额度版
+  用户、密钥、团队钱包、价格、用量
+             │
+             ▼
+     CPA 或其他兼容上游
+       凭据池与上游调度
+```
+
+CPA 单独部署。在 New API 的“渠道”中创建兼容渠道，填写 CPA 可达地址、CPA 调用密钥和模型，加入目标分组。用户使用 New API 签发的密钥。一个分组可以同时包含 GPT、DeepSeek 等不同渠道；CPA 内部若统一走一个 New API 渠道，该渠道只能对应一个渠道倍率。
+
+## 验证与维护
+
+团队相关前端测试覆盖分页、来源显示、邀请、成员隔离、趋势对比和额度策略；后端测试覆盖团队权限、资金选择、结算／退款及并发边界。三种数据库的独立验收脚本覆盖 SQLite、MySQL、PostgreSQL 的新建与升级场景，使用模拟上游。
+
+当前已验证 SQLite `3.50.4`、MySQL `8.0.46`、PostgreSQL `16.15` 的新建／升级六种场景；这不代表已逐一验证所有旧版本。测试、分支规则、上游同步和回滚步骤见 [FORK_MAINTENANCE.md](FORK_MAINTENANCE.md)。GitHub Actions 负责构建与测试，不自动修改线上服务器。
+
+## 上游与许可证
+
+本项目源自 **New API / QuantumNous**，继续遵循原仓库的 [LICENSE](LICENSE)、[NOTICE](NOTICE) 和 [第三方许可证](THIRD-PARTY-LICENSES.md)。上游原始 README 完整保留如下；其中官方链接和发行信息属于上游项目，团队功能以本页及团队版文档为准。
+
+<details>
+<summary>展开上游 New API 原始 README</summary>
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)
@@ -359,3 +434,6 @@ If this project is helpful to you, welcome to give us a ⭐️ Star！
 <sub>Built with ❤️ by QuantumNous</sub>
 
 </div>
+
+
+</details>

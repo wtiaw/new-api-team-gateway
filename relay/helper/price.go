@@ -3,9 +3,11 @@ package helper
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -59,6 +61,28 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
+	groupRatioInfo.BaseGroupRatio = groupRatioInfo.GroupRatio
+	channelID := ctx.GetInt("channel_id")
+	ratio, frozen := relayInfo.ChannelSalesMultipliers[channelID]
+	if !frozen {
+		ratio = 1
+		settings, _ := common.GetContextKeyType[dto.ChannelSettings](ctx, constant.ContextKeyChannelSetting)
+		if settings.SalesMultiplier != nil {
+			ratio = *settings.SalesMultiplier
+			if settings.ValidateSalesMultiplier() != nil {
+				ratio = math.NaN()
+			} // fail closed at strict quota conversion
+		}
+		if relayInfo.ChannelSalesMultipliers == nil {
+			relayInfo.ChannelSalesMultipliers = make(map[int]float64)
+		}
+		relayInfo.ChannelSalesMultipliers[channelID] = ratio
+	}
+	if ratio != 1 {
+		relayInfo.ChannelPricingActive = true
+	}
+	groupRatioInfo.ChannelSalesMultiplier = ratio
+	groupRatioInfo.GroupRatio *= ratio
 	return groupRatioInfo
 }
 
@@ -79,6 +103,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 
 	var preConsumedQuota int
+	var quotaBeforeGroup float64
 	var modelRatio float64
 	var completionRatio float64
 	var cacheRatio float64
@@ -118,6 +143,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		imageRatio, _ = ratio_setting.GetImageRatio(billingModelName)
 		audioRatio = ratio_setting.GetAudioRatio(billingModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(billingModelName)
+		quotaBeforeGroup = preConsumedTokens * modelRatio
 		ratio := modelRatio * groupRatioInfo.GroupRatio
 		quota, err := common.QuotaFromFloatStrict(preConsumedTokens * ratio)
 		if err != nil {
@@ -171,6 +197,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		CacheCreation1hRatio:  cacheCreationRatio1h,
 		CacheCreation12hRatio: cacheCreationRatio12h,
 		QuotaToPreConsume:     preConsumedQuota,
+		QuotaBeforeGroup:      quotaBeforeGroup,
 	}
 	if usePrice {
 		for name, ratio := range meta.BillingRatios {
@@ -186,6 +213,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			priceData.AddOtherRatio("n", float64(count))
 		}
 		if !usePrice {
+			priceData.QuotaBeforeGroup = priceData.ApplyOtherRatiosToFloat(info.ImageQuotaBeforeGroup)
 			quota, err := common.QuotaFromFloatStrict(priceData.ApplyOtherRatiosToFloat(info.ImageQuotaBeforeGroup * groupRatioInfo.GroupRatio))
 			if err != nil {
 				return hosttypes.PriceData{}, err
@@ -194,7 +222,8 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 	}
 	if usePrice {
-		quotaToPreConsume := priceData.ApplyOtherRatiosToFloat(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		priceData.QuotaBeforeGroup = priceData.ApplyOtherRatiosToFloat(modelPrice * common.QuotaPerUnit)
+		quotaToPreConsume := priceData.QuotaBeforeGroup * groupRatioInfo.GroupRatio
 		quota, err := common.QuotaFromFloatStrict(quotaToPreConsume)
 		if err != nil {
 			return hosttypes.PriceData{}, err

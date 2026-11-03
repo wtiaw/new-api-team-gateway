@@ -20,7 +20,8 @@ import { useTranslation } from 'react-i18next'
 
 import { QuotaDetailsPopover } from '@/components/quota-details-popover'
 import { StatusBadge } from '@/components/status-badge'
-import { formatQuotaWithCurrency, getCurrencyDisplay } from '@/lib/currency'
+import { getCurrencyDisplay } from '@/lib/currency'
+import { formatBalanceQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -36,10 +37,10 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
   const hasQuota = props.remaining !== 0 || props.used !== 0
-  const formattedRemaining = formatQuotaWithCurrency(props.remaining, {
+  const formattedRemaining = formatBalanceQuota(props.remaining, {
     showSymbol: false,
   })
-  const formattedUsed = formatQuotaWithCurrency(props.used, {
+  const formattedUsed = formatBalanceQuota(props.used, {
     showSymbol: false,
   })
 

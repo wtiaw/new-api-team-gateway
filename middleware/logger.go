@@ -30,9 +30,25 @@ func SetUpLogger(server *gin.Engine) {
 			tag = "web"
 		}
 		path := param.Path
+		invitationPath := false
+		for _, prefix := range []string{"/api/team-invitations/", "/team-invitation/"} {
+			if strings.HasPrefix(param.Request.URL.Path, prefix) {
+				_, suffix, hasSuffix := strings.Cut(strings.TrimPrefix(param.Request.URL.Path, prefix), "/")
+				path = prefix + "[redacted]"
+				if hasSuffix && suffix == "accept" {
+					path += "/accept"
+				}
+				invitationPath = true
+				break
+			}
+		}
 		// OAuth callbacks carry one-time codes and state in the query string.
 		// Redact the log value only; the handler still needs the original query.
-		if strings.HasPrefix(path, "/api/oauth/") || strings.HasPrefix(path, "/oauth/") {
+		if invitationPath {
+			// Bearer invitation secrets must not enter access logs.
+		} else if (param.Request.URL.Path == "/sign-in" || param.Request.URL.Path == "/sign-up") && strings.Contains(param.Request.URL.Query().Get("redirect"), "/team-invitation/") {
+			path = param.Request.URL.EscapedPath()
+		} else if strings.HasPrefix(path, "/api/oauth/") || strings.HasPrefix(path, "/oauth/") {
 			path, _, _ = strings.Cut(path, "?")
 		} else if param.Request.URL.RawQuery != "" {
 			query := param.Request.URL.Query().Encode()

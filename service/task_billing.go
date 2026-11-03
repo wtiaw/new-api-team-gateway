@@ -114,8 +114,17 @@ func taskIsSubscription(task *model.Task) bool {
 
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
 func taskAdjustFunding(task *model.Task, delta int) error {
+	if task.PrivateData.BillingSource == BillingSourceTeam {
+		if task.PrivateData.TeamReservationID == "" {
+			return fmt.Errorf("Team reservation is missing")
+		}
+		return model.SettleTeamFunding(task.PrivateData.TeamReservationID, int64(task.Quota)+int64(delta))
+	}
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
+	}
+	if task.PrivateData.BillingSource != "" && task.PrivateData.BillingSource != BillingSourceWallet {
+		return fmt.Errorf("Unknown billing source")
 	}
 	if delta > 0 {
 		return model.DecreaseUserQuota(task.UserId, delta, false)
@@ -155,6 +164,11 @@ func taskBillingOther(task *model.Task) *model.LogOther {
 			other.SetPublic("model_ratio", bc.ModelRatio)
 		}
 		other.SetPublic("group_ratio", bc.GroupRatio)
+		if bc.ChannelSalesMultiplier > 0 {
+			other.SetPublic("channel_sales_multiplier", bc.ChannelSalesMultiplier)
+			other.SetPublic("base_group_ratio", bc.BaseGroupRatio)
+			other.SetPublic("effective_price_multiplier", bc.GroupRatio)
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				if !other.SetPublic(k, v) {
@@ -388,6 +402,9 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 
 	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.ChannelSalesMultiplier > 0 {
+		modelRatio, hasRatioSetting = bc.ModelRatio, true
+	}
 	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
 		return false
@@ -415,6 +432,11 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		finalGroupRatio = groupRatio
 	}
 
+	// New requests freeze their model/group/channel price. Historical tasks without
+	// the channel field retain their original recalculation behavior.
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.ChannelSalesMultiplier > 0 {
+		finalGroupRatio = bc.GroupRatio
+	}
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0
 	if priceData := taskBillingContextPriceData(task.PrivateData.BillingContext); priceData != nil {

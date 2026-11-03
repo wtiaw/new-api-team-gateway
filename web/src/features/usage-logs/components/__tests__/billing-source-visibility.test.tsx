@@ -60,7 +60,7 @@ async function renderLogs(props: {
   useAuthStore
     .getState()
     .auth.setUser({ id: 1, username: 'tester', role: props.role })
-  const records = ['wallet', 'subscription'].map((source, index) =>
+  const records = ['wallet', 'subscription', 'team'].map((source, index) =>
     usageLogSchema.parse({
       id: index + 1,
       user_id: 1,
@@ -193,4 +193,30 @@ test('uses personal subscriptions when an admin switches to only-self view', asy
 
   await user.click(screen.getByRole('button', { name: 'Switch scope' }))
   expect(await screen.findByRole('img', { name: 'Wallet' })).toBeVisible()
+})
+
+test('system admin sees team and personal sources as text even with no subscription plans', async () => {
+  await renderLogs({
+    role: ROLE.ADMIN,
+    enabledPlans: [],
+    activeSubscription: false,
+  })
+  expect(screen.getByText('Team balance')).toBeVisible()
+  expect(screen.getByText('Personal balance')).toBeVisible()
+})
+
+test('desktop usage logs default to twenty rows per server page', async () => {
+  await renderLogs({
+    role: ROLE.ADMIN,
+    enabledPlans: [],
+    activeSubscription: false,
+  })
+  const calls = vi.mocked(api.get).mock.calls.map((call) => call[0])
+  expect(
+    calls.some(
+      (url) =>
+        url.startsWith('/api/log?') &&
+        new URLSearchParams(url.split('?')[1]).get('page_size') === '20'
+    )
+  ).toBe(true)
 })

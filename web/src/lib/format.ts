@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import dayjs from '@/lib/dayjs'
 
 import {
+  type CurrencyFormatOptions,
   formatCurrencyFromUSD,
   formatQuotaWithCurrency,
   getCurrencyDisplay,
@@ -166,12 +167,25 @@ export function formatTimestamp(timestamp: number): string {
  */
 export function formatTimestampToDate(
   timestamp?: number,
-  unit: 'seconds' | 'milliseconds' = 'seconds'
+  unit: 'seconds' | 'milliseconds' = 'seconds',
+  timeZone?: string
 ): string {
   if (!timestamp || timestamp === -1 || timestamp === 0) {
     return '-'
   }
   const ms = unit === 'seconds' ? timestamp * 1000 : timestamp
+  if (timeZone) {
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).format(ms)
+  }
   return dayjs(ms).format('YYYY-MM-DD HH:mm:ss')
 }
 
@@ -239,6 +253,19 @@ export function formatLogQuota(quota: number): string {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,
+  })
+}
+
+/** Preserve small charges in balances without compact notation or rounding to cents. */
+export function formatBalanceQuota(
+  quota: number,
+  options: CurrencyFormatOptions = {}
+): string {
+  return formatQuotaWithCurrency(quota, {
+    digitsLarge: 6,
+    digitsSmall: 6,
+    abbreviate: false,
+    ...options,
   })
 }
 

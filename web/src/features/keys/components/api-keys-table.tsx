@@ -52,6 +52,7 @@ import {
   ERROR_MESSAGES,
 } from '../constants'
 import type { ApiKey } from '../types'
+import { ApiKeyFundingCell } from './api-key-funding-cell'
 import { ApiKeyQuotaCell } from './api-key-quota-cell'
 import { ApiKeyActivityCell } from './api-key-timestamp-cell'
 import {
@@ -184,6 +185,10 @@ function ApiKeysMobileList({
                   )}
               </div>
               <ApiKeyQuotaCell apiKey={apiKey} now={now} variant='card' />
+              <div className='space-y-1'>
+                <p className='text-muted-foreground'>{t('Funding source')}</p>
+                <ApiKeyFundingCell apiKey={apiKey} />
+              </div>
             </div>
 
             <div className='flex flex-wrap items-center gap-x-5 gap-y-1'>

@@ -1,3 +1,5 @@
+import { FundingPolicyDialog } from '@/features/teams/funding-policy-dialog'
+
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -26,6 +28,13 @@ export function ApiKeysDialogs() {
 
   return (
     <>
+      {currentRow && open === 'funding-policy' && (
+        <FundingPolicyDialog
+          tokenId={currentRow.id}
+          open
+          onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+        />
+      )}
       <ApiKeysMutateDrawer
         open={open === 'create' || open === 'update'}
         onOpenChange={(isOpen) => !isOpen && setOpen(null)}

@@ -16,9 +16,12 @@ const (
 )
 
 type GroupRatioInfo struct {
-	GroupRatio        float64
-	GroupSpecialRatio float64
-	HasSpecialRatio   bool
+	// GroupRatio remains the combined billing factor for all existing settlement paths.
+	BaseGroupRatio         float64
+	ChannelSalesMultiplier float64
+	GroupRatio             float64
+	GroupSpecialRatio      float64
+	HasSpecialRatio        bool
 }
 
 type PriceData struct {
@@ -36,8 +39,9 @@ type PriceData struct {
 	AudioCompletionRatio  float64
 	otherRatios           map[string]float64
 	UsePrice              bool
-	Quota                 int // 按次计费的最终额度（MJ / Task）
-	QuotaToPreConsume     int // 按量计费的预消耗额度
+	Quota                 int     // 按次计费的最终额度（MJ / Task）
+	QuotaBeforeGroup      float64 // Frozen legacy reservation before group and channel multipliers.
+	QuotaToPreConsume     int     // 按量计费的预消耗额度
 	GroupRatioInfo        GroupRatioInfo
 }
 

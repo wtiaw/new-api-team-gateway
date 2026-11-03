@@ -156,6 +156,7 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 
 func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T) {
 	db := setupManageUserTestDB(t)
+	require.NoError(t, model.MigrateTeams(db))
 	previousMaster := common.IsMasterNode
 	common.IsMasterNode = false
 	t.Cleanup(func() { common.IsMasterNode = previousMaster })
@@ -199,6 +200,112 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 		assert.Equal(t, "admin_demote", session.RevokedReason)
 	}
 	assert.Equal(t, 1, sessionUpdateCount)
+}
+
+func TestManageUserDemoteRejectsMultipleTeamMemberships(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, model.MigrateTeams(db))
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = false
+	t.Cleanup(func() { common.IsMasterNode = previousMaster })
+	require.NoError(t, authz.Init(db))
+	user := model.User{Username: "multi-team-admin", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AuthVersion: 1, Quota: 777}
+	require.NoError(t, db.Create(&user).Error)
+	for _, name := range []string{"First", "Second"} {
+		_, err := model.CreateTeam(user.Id, common.RoleAdminUser, model.TeamCreate{Name: name, AdminUserID: user.Id})
+		require.NoError(t, err)
+	}
+	now := time.Now().Unix()
+	require.NoError(t, db.Create(&model.UserSession{SID: "multi-team-admin-session", UserID: user.Id, Version: 1, UserAuthVersion: 1, Status: model.UserSessionStatusActive, RefreshHash: "multi-team-admin-refresh", ExpiresAt: now + 3600}).Error)
+	identity, proof := manageUserProof(t, db, service.VerificationOperation{Scope: service.VerificationScopeAdminUserManage, Context: []byte(fmt.Sprintf(`{"user_id":%d,"action":"demote"}`, user.Id))})
+	recorder := performVerifiedManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"demote"}`, user.Id), identity, proof)
+	var response struct {
+		Success    bool   `json:"success"`
+		MessageKey string `json:"message_key"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success, recorder.Body.String())
+	require.Equal(t, "Remove extra team memberships before demoting this administrator", response.MessageKey)
+	var stored model.User
+	require.NoError(t, db.First(&stored, user.Id).Error)
+	require.Equal(t, common.RoleAdminUser, stored.Role)
+	require.EqualValues(t, 1, stored.AuthVersion)
+	require.Equal(t, 777, stored.Quota)
+	var session model.UserSession
+	require.NoError(t, db.First(&session, "sid = ?", "multi-team-admin-session").Error)
+	require.Equal(t, model.UserSessionStatusActive, session.Status)
+	var count int64
+	require.NoError(t, db.Model(&model.TeamMember{}).Where("user_id = ? AND status = ?", user.Id, 1).Count(&count).Error)
+	require.EqualValues(t, 2, count)
+	// Partial profile and status updates do not request a role change.
+	partial := model.User{Id: user.Id, DisplayName: "Retained administrator", Status: common.UserStatusDisabled}
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error { return partial.UpdateWithTx(tx, false) }))
+	require.Equal(t, common.RoleAdminUser, partial.Role)
+}
+
+func TestTeamDemotionConcurrentMembershipUpdate(t *testing.T) {
+	for _, operation := range []string{"invite", "create", "appoint"} {
+		t.Run(operation, func(t *testing.T) {
+			db := setupManageUserTestDB(t)
+			require.NoError(t, model.MigrateTeams(db))
+			if db.Dialector.Name() == "sqlite" {
+				sqlDB, err := db.DB()
+				require.NoError(t, err)
+				sqlDB.SetMaxOpenConns(1)
+			}
+			root := createQuotaTestOperator(t, db, common.RoleRootUser)
+			user := model.User{Username: "concurrent-team-admin", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AffCode: "concurrent-team-admin-aff"}
+			require.NoError(t, db.Create(&user).Error)
+			_, err := model.CreateTeam(root.Id, common.RoleRootUser, model.TeamCreate{Name: "First", AdminUserID: user.Id})
+			require.NoError(t, err)
+			second, err := model.CreateTeam(root.Id, common.RoleRootUser, model.TeamCreate{Name: "Second", AdminUserID: root.Id})
+			require.NoError(t, err)
+			_, token, err := model.CreateTeamInvitation(second.ID, root.Id, common.RoleRootUser, 7)
+			require.NoError(t, err)
+			start := make(chan struct{})
+			results := make(chan error, 2)
+			var wg sync.WaitGroup
+			wg.Go(func() {
+				<-start
+				demoted := model.User{Id: user.Id, Role: common.RoleCommonUser}
+				results <- db.Transaction(func(tx *gorm.DB) error { return demoted.UpdateWithTx(tx, false) })
+			})
+			wg.Go(func() {
+				<-start
+				var err error
+				switch operation {
+				case "create":
+					_, err = model.CreateTeam(root.Id, common.RoleRootUser, model.TeamCreate{Name: "Concurrent", AdminUserID: user.Id})
+				case "appoint":
+					_, err = model.UpdateTeam(second.ID, root.Id, common.RoleRootUser, model.TeamUpdate{AdminUserID: &user.Id})
+				default:
+					_, err = model.AcceptTeamInvitation(token, user.Id)
+				}
+				results <- err
+			})
+			close(start)
+			wg.Wait()
+			close(results)
+			successes := 0
+			for err := range results {
+				if err == nil {
+					successes++
+				} else {
+					require.True(t, errors.Is(err, model.ErrTeamMembership) || errors.Is(err, model.ErrTeamDemotion), err)
+				}
+			}
+			require.Equal(t, 1, successes)
+			var stored model.User
+			require.NoError(t, db.First(&stored, user.Id).Error)
+			var count int64
+			require.NoError(t, db.Model(&model.TeamMember{}).Where("user_id = ? AND status = ?", user.Id, 1).Count(&count).Error)
+			if stored.Role < common.RoleAdminUser {
+				require.EqualValues(t, 1, count)
+			} else {
+				require.EqualValues(t, 2, count)
+			}
+		})
+	}
 }
 
 func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
@@ -467,9 +574,9 @@ func TestManageUserQuotaTargetsAndWalletBounds(t *testing.T) {
 
 func TestManageUserQuotaMiddlewareKeepsOneOperationPerRequest(t *testing.T) {
 	db := setupManageUserTestDB(t)
-	pat := "quota-middleware-test-token"
-	operator := model.User{Id: 9999, Username: "root-operator", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1, AccessToken: &pat, Quota: 1000}
+	operator := model.User{Id: 9999, Username: "root-operator", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1, Quota: 1000}
 	require.NoError(t, db.Create(&operator).Error)
+	pat, _ := createScopedAccessToken(t, operator.Id, time.Now().Add(time.Hour).Unix(), "user:write")
 	router := gin.New()
 	router.Use(middleware.RequestId(), middleware.AccessTokenAudit())
 	router.POST("/api/user/manage", middleware.AdminAuth(), ManageUser)

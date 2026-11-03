@@ -52,6 +52,7 @@ interface StatCardProps {
   action?: ReactNode
   iconTone?: IconBadgeTone
   compactMobile?: boolean
+  showDetailsOnMobile?: boolean
 }
 
 const TONE_CLASSES: Record<StatCardTone, string> = {
@@ -325,7 +326,15 @@ export function StatCard(props: StatCardProps) {
 
       {valueContent}
 
-      <div className='hidden sm:block'>{visualization}</div>
+      <div
+        className={
+          props.showDetailsOnMobile && props.details?.length
+            ? 'block'
+            : 'hidden sm:block'
+        }
+      >
+        {visualization}
+      </div>
     </div>
   )
 }

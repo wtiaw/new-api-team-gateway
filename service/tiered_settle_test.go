@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"net/http"
@@ -1173,6 +1174,27 @@ func TestSamePriceCacheReadsRemainInInput(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, previousCost, cost, "folding cache reads into input must preserve the charge")
 			assert.Equal(t, separateParams.Len, params.Len, "tier conditions keep the full context length")
+		})
+	}
+}
+
+func TestChannelRetryReservesBeforeSendingAndRejectsInsufficientWallet(t *testing.T) {
+	for _, expression := range []bool{false, true} {
+		t.Run(fmt.Sprintf("expression=%v", expression), func(t *testing.T) {
+			truncate(t)
+			seedUser(t, 901, 20_000)
+			info := &relaycommon.RelayInfo{UserId: 901, IsPlayground: true, ChannelPricingActive: true,
+				PriceData: types.PriceData{QuotaBeforeGroup: 100_000, GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1, ChannelSalesMultiplier: 1}}}
+			if expression {
+				info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", GroupRatio: 0.3, EstimatedQuotaBeforeGroup: 100_000, EstimatedQuotaAfterGroup: 30_000}
+			}
+			session := &BillingSession{relayInfo: info, funding: &WalletFunding{userId: 901, consumed: 30_000}, preConsumedQuota: 30_000}
+			info.Billing = session
+			require.NotNil(t, PrepareTieredBillingForSelectedGroup(nil, info), "A 0.3x to C 1x must reserve the extra before any upstream call")
+			require.Equal(t, 30_000, session.GetPreConsumedQuota())
+			balance, err := model.GetUserQuota(901, false)
+			require.NoError(t, err)
+			require.Equal(t, 20_000, balance)
 		})
 	}
 }

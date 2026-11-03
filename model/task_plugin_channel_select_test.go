@@ -137,3 +137,40 @@ func TestModelModifierNamesRouteWithAndWithoutMemoryCache(t *testing.T) {
 		assert.Nil(t, selected, "memory cache %v", memoryCache)
 	}
 }
+
+func TestRoutingGroupContainsMultipleProviders(t *testing.T) {
+	truncateTables(t)
+	originalMemoryCache := common.MemoryCacheEnabled
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCache; InitChannelCache() })
+	channels := []Channel{
+		{Id: 940001, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Name: "GPT fixture", Models: "gpt-group-fixture", Group: "shared-team", Key: "fixture-openai-key", BaseURL: new("https://openai.example")},
+		{Id: 940002, Type: constant.ChannelTypeDeepSeek, Status: common.ChannelStatusEnabled, Name: "DeepSeek fixture", Models: "deepseek-group-fixture", Group: "shared-team", Key: "fixture-deepseek-key", BaseURL: new("https://deepseek.example")},
+		{Id: 940003, Type: constant.ChannelTypeDeepSeek, Status: common.ChannelStatusEnabled, Name: "Other group", Models: "foreign-model", Group: "other-team", Key: "fixture-other-key"},
+	}
+	for i := range channels {
+		require.NoError(t, channels[i].Insert())
+	}
+	assert.ElementsMatch(t, []string{"gpt-group-fixture", "deepseek-group-fixture"}, GetGroupEnabledModels("shared-team"))
+	for _, memoryCache := range []bool{false, true} {
+		common.MemoryCacheEnabled = memoryCache
+		InitChannelCache()
+		for _, expected := range channels[:2] {
+			selected, err := GetRandomSatisfiedChannel("shared-team", expected.Models, 0, nil)
+			require.NoError(t, err)
+			require.NotNil(t, selected, "cache %v, model %s", memoryCache, expected.Models)
+			assert.Equal(t, expected.Id, selected.Id)
+			assert.Equal(t, expected.Type, selected.Type)
+			assert.Equal(t, expected.Key, selected.Key)
+			assert.Equal(t, expected.GetBaseURL(), selected.GetBaseURL())
+		}
+		for _, request := range []struct{ group, model string }{
+			{"shared-team", "foreign-model"},
+			{"shared-team", "unsupported-model"},
+			{"missing-group", "gpt-group-fixture"},
+		} {
+			selected, err := GetRandomSatisfiedChannel(request.group, request.model, 0, nil)
+			require.NoError(t, err)
+			assert.Nil(t, selected, "cache %v, group %s, model %s", memoryCache, request.group, request.model)
+		}
+	}
+}

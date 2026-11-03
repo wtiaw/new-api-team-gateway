@@ -24,7 +24,7 @@ concurrency:
 jobs:
   prepare-release:
     name: Create or update GitCode release
-    if: ${{ vars.GITCODE_REPOSITORY != '' }}
+    if: github.repository == 'QuantumNous/new-api' && (vars.GITCODE_REPOSITORY != '')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     outputs:
@@ -231,7 +231,7 @@ jobs:
   gitcode-release-assets:
     name: Publish GitCode asset (${{ matrix.file_name }})
     needs: prepare-release
-    if: ${{ inputs.sync_files && needs.prepare-release.result == 'success' && needs.prepare-release.outputs.has_release_assets == 'true' }}
+    if: github.repository == 'QuantumNous/new-api' && (inputs.sync_files && needs.prepare-release.result == 'success' && needs.prepare-release.outputs.has_release_assets == 'true')
     strategy:
       fail-fast: false
       max-parallel: 4

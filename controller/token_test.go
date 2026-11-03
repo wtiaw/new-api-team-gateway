@@ -110,6 +110,8 @@ func migrateTokenControllerTestDB(t *testing.T, db *gorm.DB) {
 	if err := db.AutoMigrate(&model.Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
+	require.NoError(t, model.MigrateTeams(db))
+	require.NoError(t, model.MigrateTeamFunding(db))
 }
 
 func setupTokenControllerTestDB(t *testing.T) *gorm.DB {

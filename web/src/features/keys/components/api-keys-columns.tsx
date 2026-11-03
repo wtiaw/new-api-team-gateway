@@ -32,6 +32,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { API_KEY_STATUSES } from '../constants'
 import type { ApiKey } from '../types'
+import { ApiKeyFundingCell } from './api-key-funding-cell'
 import { ApiKeyGroupCell } from './api-key-group-cell'
 import { ApiKeyQuotaCell } from './api-key-quota-cell'
 import {
@@ -139,6 +140,14 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         cell: ({ row }) => <ApiKeyCell apiKey={row.original} />,
         enableSorting: false,
         size: 260,
+      },
+      {
+        id: 'funding',
+        header: t('Funding source'),
+        cell: ({ row }) => <ApiKeyFundingCell apiKey={row.original} />,
+        enableSorting: false,
+        enableHiding: false,
+        size: 210,
       },
       {
         id: 'quota',

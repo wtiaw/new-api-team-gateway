@@ -1,0 +1,72 @@
+# Independent acceptance project only. The runner always supplies -p tgtest-*.
+services:
+  app:
+    image: ${TEST_APP_IMAGE:-new-api-team-gateway:local}
+    ports: ["127.0.0.1:${TEST_PORT:-18330}:3000"]
+    environment:
+      SQL_DSN: ${TEST_SQL_DSN:-}
+      LOG_SQL_DSN: ${TEST_LOG_SQL_DSN:-}
+      SQLITE_PATH: /data/acceptance.db
+      SESSION_SECRET: isolated-acceptance-session-secret-not-for-production
+      REDIS_CONN_STRING: redis://redis:6379/0
+      TZ: Asia/Shanghai
+      BATCH_UPDATE_ENABLED: "false"
+      ERROR_LOG_ENABLED: "true"
+      TRUSTED_PROXIES: none
+      SESSION_COOKIE_SECURE: "false"
+      # Large TEST-ONLY budgets; authentication and all limiters remain enabled.
+      CRITICAL_RATE_LIMIT: "10000"
+      GLOBAL_API_RATE_LIMIT: "10000"
+      GLOBAL_WEB_RATE_LIMIT: "10000"
+      SEARCH_RATE_LIMIT: "10000"
+      GOMAXPROCS: "2"
+      SYNC_FREQUENCY: "1"
+    volumes: ["app-data:/data"]
+    depends_on:
+      redis: {condition: service_healthy}
+      mock-upstream: {condition: service_healthy}
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_USER: acceptance
+      POSTGRES_PASSWORD: acceptance-isolated-only
+      POSTGRES_DB: acceptance
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "acceptance", "-d", "acceptance"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+  mysql:
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    environment:
+      MYSQL_ROOT_PASSWORD: acceptance-isolated-only
+      MYSQL_DATABASE: acceptance
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysql -h 127.0.0.1 -uroot -e 'SELECT 1' >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+  redis:
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  mock-upstream:
+    image: python:3.12-alpine@sha256:d09d15e60962ca365d1cd544a48773bac9d33f2fb1b00f2aa0deec78ade7dc31
+    command: ["python", "/fixture/mock_server.py"]
+    environment:
+      MOCK_UPSTREAM_KEY: isolated-acceptance-upstream-key
+    volumes: ["./mock_server.py:/fixture/mock_server.py:ro"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  app-data:
+  postgres-data:
+  mysql-data:

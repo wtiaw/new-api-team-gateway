@@ -1810,3 +1810,15 @@ func TestSettle_TokenRecalcFallsBackToCompletionTokens(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskTokenRecalculationUsesFrozenChannelPrice(t *testing.T) {
+	truncate(t)
+	const userID, channelID = 921, 921
+	seedUser(t, userID, 10_000)
+	seedChannel(t, channelID)
+	// The live model price can even be removed: an accepted job keeps its quote.
+	task := makeTask(userID, channelID, 100, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext = &model.TaskBillingContext{OriginModelName: "deleted-channel-model", ModelRatio: 2, GroupRatio: 0.15, BaseGroupRatio: 0.5, ChannelSalesMultiplier: 0.3}
+	require.True(t, RecalculateTaskQuotaByTokens(context.Background(), task, 100))
+	require.Equal(t, 30, task.Quota)
+}

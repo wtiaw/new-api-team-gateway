@@ -115,7 +115,9 @@ describe('log cost display', () => {
 
     expect(screen.getByText('$0.025')).toBeVisible()
     expect(screen.getByRole('img', { name: 'Subscription' })).toBeVisible()
-    expect(screen.queryByRole('img', { name: 'Wallet' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('img', { name: 'Wallet' })
+    ).not.toBeInTheDocument()
   })
 
   test('keeps legacy cost visible without inventing a funding source', () => {
@@ -231,3 +233,19 @@ describe('log cost display', () => {
     ).toHaveAttribute('data-tool-surcharge-indicator', 'true')
   })
 })
+
+test.each([
+  { source: 'team', label: 'Team balance' },
+  { source: 'wallet', label: 'Personal balance' },
+])(
+  'shows actual $source funding as visible text without subscription availability',
+  ({ source, label }) => {
+    renderCost({
+      quota: 63,
+      other: { billing_source: source },
+      showBillingSource: false,
+    })
+    expect(screen.getByText(label)).toBeVisible()
+    expect(screen.getByText('$0.000126')).toBeVisible()
+  }
+)

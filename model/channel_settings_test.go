@@ -146,6 +146,7 @@ func TestInferencePresetSettingsAndDatabaseRoundTrip(t *testing.T) {
 			for _, channelType := range []int{constant.ChannelTypeVLLM, constant.ChannelTypeSGLang} {
 				t.Run(fmt.Sprint(channelType), func(t *testing.T) {
 					channel := &Channel{Type: channelType, Key: "EMPTY", Name: "inference", Status: common.ChannelStatusEnabled}
+					channel.SetSetting(dto.ChannelSettings{SalesMultiplier: common.GetPointer(0.3)})
 					require.NoError(t, channel.ValidateSettings())
 					require.NotNil(t, channel.GetOtherSettings().AdvancedCustom)
 					require.NoError(t, table.Create(channel).Error)
@@ -153,6 +154,8 @@ func TestInferencePresetSettingsAndDatabaseRoundTrip(t *testing.T) {
 						var loaded Channel
 						require.NoError(t, table.First(&loaded, channel.Id).Error)
 						assert.Equal(t, channelType, loaded.Type)
+						require.NotNil(t, loaded.GetSetting().SalesMultiplier)
+						assert.Equal(t, 0.3, *loaded.GetSetting().SalesMultiplier)
 						assert.Empty(t, loaded.OtherSettings)
 						defaults := loaded.GetOtherSettings().AdvancedCustom
 						require.NotNil(t, defaults)
@@ -193,5 +196,16 @@ func TestInferencePresetSettingsAndDatabaseRoundTrip(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestChannelSalesMultiplierValidationAndJSON(t *testing.T) {
+	for _, raw := range []string{`{}`, `{"sales_multiplier":null}`, `{"sales_multiplier":0.3}`, `{"sales_multiplier":100}`} {
+		ch := &Channel{Setting: common.GetPointer(raw)}
+		require.NoError(t, ch.ValidateSettings())
+	}
+	for _, raw := range []string{`{"sales_multiplier":0}`, `{"sales_multiplier":-1}`, `{"sales_multiplier":101}`, `{"sales_multiplier":"0.3"}`} {
+		ch := &Channel{Setting: common.GetPointer(raw)}
+		require.Error(t, ch.ValidateSettings(), raw)
 	}
 }

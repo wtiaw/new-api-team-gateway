@@ -56,6 +56,7 @@ export type BillingPluginVariant = {
 }
 
 export type PricingModel = {
+  channel_sales_ranges?: Record<string, { min: number; max: number }>
   billing_plugin_variants?: BillingPluginVariant[]
   id: number
   model_name: string

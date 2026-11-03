@@ -2249,6 +2249,36 @@ export function ChannelMutateDrawer({
 
       <FormField
         control={form.control}
+        name='sales_multiplier'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Channel Sales Multiplier')}</FormLabel>
+            <FormControl>
+              <Input
+                type='number'
+                min={0.000001}
+                max={100}
+                step='any'
+                {...field}
+                value={field.value ?? 1}
+                onChange={(event) =>
+                  field.onChange(
+                    event.target.value === '' ? '' : Number(event.target.value)
+                  )
+                }
+              />
+            </FormControl>
+            <FormDescription>
+              {t(
+                'User charge = model base price × channel sales multiplier × group multiplier. Default 1. Routing weight does not affect pricing.'
+              )}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
         name='test_model'
         render={({ field }) => (
           <FormItem>

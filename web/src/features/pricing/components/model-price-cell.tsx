@@ -233,6 +233,24 @@ export function ModelPriceCell(props: {
       caption = `${currencyLabel} / ${t('request')}`
     }
   }
+  const channelRanges = Object.entries(props.model.channel_sales_ranges ?? {})
+    .filter(
+      ([group]) =>
+        !options.selectedGroup ||
+        options.selectedGroup === 'all' ||
+        options.selectedGroup === 'auto' ||
+        group === options.selectedGroup
+    )
+    .map(([, range]) => range)
+  const channelMin = Math.min(...channelRanges.map((range) => range.min))
+  const channelMax = Math.max(...channelRanges.map((range) => range.max))
+  const channelCaption =
+    channelRanges.length > 0 && (channelMin !== 1 || channelMax !== 1)
+      ? t(
+          'Before channel multiplier; channel factor {{min}}x–{{max}}x. Final price follows the serving channel.',
+          { min: channelMin, max: channelMax }
+        )
+      : ''
   return (
     <span className='block w-full max-w-full min-w-0 space-y-1.5'>
       <span
@@ -264,6 +282,11 @@ export function ModelPriceCell(props: {
       >
         {caption}
       </span>
+      {channelCaption && (
+        <span className='text-muted-foreground block text-xs'>
+          {channelCaption}
+        </span>
+      )}
     </span>
   )
 }

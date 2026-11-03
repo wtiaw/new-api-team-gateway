@@ -303,9 +303,35 @@ function KeysPage() {
   )
 }
 
-async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
-  let currentKey = { ...key, status, ...overrides }
+async function renderKeysPage(
+  status = 1,
+  overrides: Partial<ApiKey> = {},
+  teamOptions = [
+    { id: 9, name: 'Research', status: 1, allow_personal_backup: true },
+  ]
+) {
+  let currentKey = {
+    ...key,
+    status,
+    funding_policy: {
+      mode: 'team_first' as const,
+      team_id: 9,
+      is_default: true,
+    },
+    ...overrides,
+  }
   vi.mocked(api.get).mockImplementation(async (url) => {
+    if (url.startsWith('/api/team-key-policies/')) {
+      return { data: { success: true, data: { mode: 'legacy', team_id: 0 } } }
+    }
+    if (url === '/api/teams') {
+      return {
+        data: {
+          success: true,
+          data: teamOptions,
+        },
+      }
+    }
     if (url.startsWith('/api/token/')) {
       return {
         data: { success: true, data: { items: [currentKey], total: 1 } },
@@ -317,8 +343,18 @@ async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
     data: { success: true, data: { key: 'fake-key-for-test-only' } },
   })
   const put = vi.spyOn(api, 'put').mockImplementation(async (_url, data) => {
-    const update = data as { id: number; status: number }
-    currentKey = { ...currentKey, status: update.status }
+    if (_url.startsWith('/api/team-key-policies/')) {
+      currentKey = {
+        ...currentKey,
+        funding_policy: {
+          ...(data as NonNullable<ApiKey['funding_policy']>),
+          is_default: false,
+        },
+      }
+    } else {
+      const update = data as { id: number; status: number }
+      currentKey = { ...currentKey, status: update.status }
+    }
     return { data: { success: true, data: currentKey } }
   })
   const client = new QueryClient({
@@ -348,6 +384,75 @@ async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
   await screen.findByText(currentKey.name)
   return { post, put }
 }
+
+it.each([false, true])(
+  'opens funding choices directly from the key row (mobile: %s)',
+  async (mobile) => {
+    if (mobile) {
+      const matchMedia = window.matchMedia
+      vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+        ...matchMedia(query),
+        matches: query.includes('max-width'),
+      }))
+    }
+    const { put } = await renderKeysPage()
+    const source = screen.getByRole('combobox', {
+      name: 'Funding source: production',
+    })
+    expect(source).toHaveValue('team_first')
+    expect(
+      screen.queryByRole('button', { name: 'Funding source' })
+    ).not.toBeInTheDocument()
+    for (const mode of [
+      'Personal only',
+      'Team only',
+      'Team first, personal backup',
+      'Personal first, team backup',
+    ]) {
+      expect(
+        await within(source).findByRole('option', { name: mode })
+      ).toBeEnabled()
+    }
+    await userEvent.selectOptions(source, 'personal_only')
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith('/api/team-key-policies/7', {
+        mode: 'personal_only',
+        team_id: 0,
+      })
+    )
+    await waitFor(() => expect(source).toHaveValue('personal_only'))
+    await waitFor(() => expect(source).toBeEnabled())
+    await userEvent.selectOptions(source, 'team_first')
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith('/api/team-key-policies/7', {
+        mode: 'team_first',
+        team_id: 9,
+      })
+    )
+  }
+)
+
+it('restores the actual team when an inline funding save fails', async () => {
+  const { put } = await renderKeysPage(1, {}, [
+    { id: 9, name: 'Research', status: 1, allow_personal_backup: true },
+    { id: 10, name: 'Restricted', status: 1, allow_personal_backup: false },
+  ])
+  put.mockRejectedValueOnce(
+    new Error('Personal backup is disabled for this team')
+  )
+  const team = await screen.findByRole('combobox', { name: 'Team: production' })
+  await userEvent.selectOptions(team, '10')
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith('/api/team-key-policies/7', {
+      mode: 'team_first',
+      team_id: 10,
+    })
+  )
+  await waitFor(() => expect(team).toHaveValue('9'))
+  expect(
+    screen.getByRole('combobox', { name: 'Funding source: production' })
+  ).toHaveValue('team_first')
+})
 
 it('combines creation and last use while keeping expiry, models and IP restrictions separate', async () => {
   await renderKeysPage()

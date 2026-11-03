@@ -1,0 +1,79 @@
+name: new-api-team-gateway-prod
+services:
+  app:
+    image: ${NEW_API_IMAGE:?Set the verified release image}
+    ports: ["127.0.0.1:${GATEWAY_PORT:-18310}:3000"]
+    environment:
+      SQL_DSN: postgresql://gateway:${POSTGRES_PASSWORD:?Generate server credentials}@postgres:5432/new_api_team_gateway
+      REDIS_CONN_STRING: redis://:${REDIS_PASSWORD:?Generate server credentials}@redis:6379/0
+      SESSION_SECRET: ${SESSION_SECRET:?Generate server credentials}
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_COOKIE_TRUSTED_URL: ${SESSION_COOKIE_TRUSTED_URL:-${SITE_URL:?Set the HTTPS origin}}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?Set the Caddy proxy address}
+      SQL_MAX_IDLE_CONNS: "5"
+      SQL_MAX_OPEN_CONNS: "20"
+      SQL_MAX_LIFETIME: "300"
+      TZ: Asia/Shanghai
+      DEFAULT_LANGUAGE: zh-CN
+      ERROR_LOG_ENABLED: "true"
+      BATCH_UPDATE_ENABLED: "false"
+      NODE_NAME: new-api-team-gateway-tokyo
+      GOMEMLIMIT: 384MiB
+      GOMAXPROCS: "2"
+    volumes: ["./data/app:/data"]
+    networks:
+      private:
+      edge:
+        aliases: ["new-api-team-gateway"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -q '\"success\":true'"]
+      interval: 5s
+      timeout: 4s
+      retries: 40
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 60s
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_DB: new_api_team_gateway
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate server credentials}
+      TZ: Asia/Shanghai
+    volumes: ["./data/postgres:/var/lib/postgresql/data"]
+    networks: [private]
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "gateway", "-d", "new_api_team_gateway"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    mem_limit: 384m
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+  redis:
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Generate server credentials}", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Generate server credentials}
+    volumes: ["./data/redis:/data"]
+    networks: [private]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    mem_limit: 128m
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+networks:
+  private:
+  edge:
+    external: true
+    name: ${CADDY_NETWORK:?Set the existing reverse proxy network}

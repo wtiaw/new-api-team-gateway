@@ -1,0 +1,6 @@
+# Replace gateway.example.com with your domain.
+# Attach Caddy to the external network configured as CADDY_NETWORK.
+gateway.example.com {
+    encode zstd gzip
+    reverse_proxy new-api-team-gateway:3000
+}

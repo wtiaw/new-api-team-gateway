@@ -47,6 +47,19 @@ export const apiKeySchema = z.object({
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
   allow_user_quota_query: z.boolean().optional().default(false),
+  funding_policy: z
+    .object({
+      mode: z.enum([
+        'legacy',
+        'personal_only',
+        'team_only',
+        'team_first',
+        'personal_first',
+      ]),
+      team_id: z.number(),
+      is_default: z.boolean().optional(),
+    })
+    .nullish(),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -108,6 +121,7 @@ export interface TokenAutoGroupsConfig {
 // ============================================================================
 
 export type ApiKeysDialogType =
+  | 'funding-policy'
   | 'create'
   | 'update'
   | 'delete'

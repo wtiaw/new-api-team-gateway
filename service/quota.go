@@ -438,7 +438,14 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
 
 	// 1) Consume from wallet quota OR subscription item
-	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
+	if relayInfo != nil && relayInfo.BillingSource == BillingSourceTeam {
+		if relayInfo.TeamReservationID == "" {
+			return result, errors.New("Team reservation is missing")
+		}
+		if err := model.SettleTeamFunding(relayInfo.TeamReservationID, int64(preConsumedQuota)+int64(quota)); err != nil {
+			return result, err
+		}
+	} else if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
 		if relayInfo.SubscriptionId == 0 {
 			return result, errors.New("subscription id is missing")
 		}
@@ -449,7 +456,7 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 			}
 			relayInfo.SubscriptionPostDelta += delta
 		}
-	} else {
+	} else if relayInfo != nil && (relayInfo.BillingSource == "" || relayInfo.BillingSource == BillingSourceWallet) {
 		// Wallet
 		if quota > 0 {
 			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
@@ -459,6 +466,8 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 		if err != nil {
 			return result, err
 		}
+	} else {
+		return result, errors.New("Unknown billing source")
 	}
 	result.FundingApplied = true
 
@@ -474,7 +483,7 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 		result.TokenApplied = true
 	}
 
-	if sendEmail {
+	if sendEmail && relayInfo.BillingSource != BillingSourceTeam {
 		if (quota + preConsumedQuota) != 0 {
 			checkAndSendQuotaNotify(relayInfo, quota, preConsumedQuota)
 		}

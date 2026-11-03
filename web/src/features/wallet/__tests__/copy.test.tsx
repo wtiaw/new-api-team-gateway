@@ -21,12 +21,14 @@ import { createInstance } from 'i18next'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
 import { beforeEach, expect, it, vi } from 'vitest'
 
+import { UserQuotaCell } from '@/features/users/components/user-quota-cell'
 import { BillingHistoryDialog } from '@/features/wallet/components/dialogs/billing-history-dialog'
 import en from '@/i18n/locales/en.json'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 
 import { RechargeFormCard } from '../components/recharge-form-card'
+import { WalletStatsCard } from '../components/wallet-stats-card'
 
 const i18n = createInstance()
 
@@ -125,3 +127,28 @@ it.each([
     expect(screen.getByPlaceholderText('Minimum 1')).toBeVisible()
   }
 )
+
+it('preserves micro-dollar deductions in the wallet balance instead of rounding back to ten', () => {
+  render(
+    <WalletStatsCard
+      user={{
+        id: 4,
+        username: 'lixiang',
+        quota: 4999937,
+        used_quota: 4115,
+        request_count: 3,
+        aff_quota: 0,
+        aff_history_quota: 0,
+        aff_count: 0,
+        group: 'default',
+      }}
+    />
+  )
+  expect(screen.getByText('$9.999874')).toBeVisible()
+  expect(screen.queryByText('$10')).not.toBeInTheDocument()
+})
+
+it('shows the same precise personal balance in administrator user rows', () => {
+  render(<UserQuotaCell remaining={4999937} used={4115} />)
+  expect(screen.getByText('9.999874')).toBeVisible()
+})

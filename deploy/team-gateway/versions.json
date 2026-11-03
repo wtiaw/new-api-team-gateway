@@ -1,0 +1,10 @@
+{
+  "upstream": "https://github.com/QuantumNous/new-api",
+  "tag": "v1.0.0-rc.47",
+  "commit": "e835b1bfc43b565d625537830dbfb19328925134",
+  "releaseStatus": "release-candidate",
+  "applicationImage": "new-api-team-gateway:local",
+  "upstreamImage": "calciumion/new-api:v1.0.0-rc.47",
+  "goImage": "golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308",
+  "bunImage": "oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d"
+}

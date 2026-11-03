@@ -816,8 +816,21 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	newUser := *user
 	current := User{}
-	if err = tx.First(&current, user.Id).Error; err != nil {
+	// Serialize persisted role changes with team membership changes, which use
+	// this same user lock before checking the system-administrator exemption.
+	if err = lockForUpdate(tx).First(&current, user.Id).Error; err != nil {
 		return err
+	}
+	if newUser.Role > 0 && newUser.Role < common.RoleAdminUser && current.Role >= common.RoleAdminUser {
+		var memberships []TeamMember
+		// A locking read sees the latest committed rows on MySQL even if the
+		// caller established a repeatable-read snapshot before acquiring the user.
+		if err = lockForUpdate(tx).Where("user_id = ? AND status = ?", user.Id, 1).Limit(2).Find(&memberships).Error; err != nil {
+			return err
+		}
+		if len(memberships) > 1 {
+			return ErrTeamDemotion
+		}
 	}
 	// Updates(struct) ignores zero values. Match that behavior when deciding
 	// whether this request actually changes authentication-sensitive state;

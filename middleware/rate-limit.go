@@ -194,6 +194,25 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// LoginRateLimit shares one budget across password, MFA and passkey entry
+// points, independently of authenticated management operations.
+func LoginRateLimit() gin.HandlerFunc {
+	if !common.CriticalRateLimitEnable {
+		return defNext
+	}
+	return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "LOGIN")
+}
+
+// BrowserSessionRateLimit permits normal reloads and multi-tab token refreshes
+// without spending login attempts. Invalid cookies remain bounded as well;
+// Origin and session validation still run on the server.
+func BrowserSessionRateLimit() gin.HandlerFunc {
+	if !common.CriticalRateLimitEnable {
+		return defNext
+	}
+	return rateLimitFactory(60, 60, "SESSION")
+}
+
 func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	if !common.CriticalRateLimitEnable {
 		return defNext

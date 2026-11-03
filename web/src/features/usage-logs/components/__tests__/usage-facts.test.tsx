@@ -275,3 +275,18 @@ describe('usage facts billing details', () => {
     expect(screen.getByText('Total Cost')).toBeInTheDocument()
   })
 })
+
+test('shows frozen channel, group and final price factors even with a user group override', () => {
+  const client = renderDetails({
+    model_ratio: 1,
+    group_ratio: 0.24,
+    user_group_ratio: 0.8,
+    base_group_ratio: 0.8,
+    channel_sales_multiplier: 0.3,
+    effective_price_multiplier: 0.24,
+  })
+  expect(rowValue('Channel Sales Multiplier')).toBe('0.3000x')
+  expect(rowValue('Group Ratio')).toBe('0.8000x')
+  expect(rowValue('Effective Price Multiplier')).toBe('0.2400x')
+  client.clear()
+})

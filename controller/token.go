@@ -41,7 +41,8 @@ type tokenRequest struct {
 
 type tokenResponse struct {
 	*model.Token
-	AutoGroups []string `json:"auto_groups"`
+	AutoGroups    []string             `json:"auto_groups"`
+	FundingPolicy *model.TeamKeyPolicy `json:"funding_policy,omitempty"`
 }
 
 func maxTokenQuota() int {
@@ -71,12 +72,18 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
 }
 
-func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
+func buildMaskedTokenResponses(tokens []*model.Token, userID int) ([]*tokenResponse, error) {
+	policies, err := model.GetTeamKeyPolicies(tokens, userID)
+	if err != nil {
+		return nil, err
+	}
 	maskedTokens := make([]*tokenResponse, 0, len(tokens))
 	for _, token := range tokens {
-		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
+		response := buildMaskedTokenResponse(token)
+		response.FundingPolicy = policies[token.Id]
+		maskedTokens = append(maskedTokens, response)
 	}
-	return maskedTokens
+	return maskedTokens, nil
 }
 
 func getTokenRequestUserGroup(c *gin.Context) (string, error) {
@@ -139,7 +146,12 @@ func GetAllTokens(c *gin.Context) {
 	}
 	total, _ := model.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	responses, err := buildMaskedTokenResponses(tokens, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetItems(responses)
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -156,7 +168,12 @@ func SearchTokens(c *gin.Context) {
 		return
 	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	responses, err := buildMaskedTokenResponses(tokens, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetItems(responses)
 	common.ApiSuccess(c, pageInfo)
 }
 

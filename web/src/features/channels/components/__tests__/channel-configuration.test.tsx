@@ -3029,3 +3029,24 @@ test('AWS interface selection is disabled without sensitive channel write permis
     await screen.findByRole('combobox', { name: 'AWS API' })
   ).toBeDisabled()
 })
+
+test('channel sale multiplier is directly editable and saved independently of routing weight', async () => {
+  editingChannel.setting = JSON.stringify({ sales_multiplier: 0.3 })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('tab', { name: /Routing & Mapping/ }))
+  const multiplier = screen.getByRole('spinbutton', {
+    name: 'Channel Sales Multiplier',
+  })
+  expect(multiplier).toHaveValue(0.3)
+  await user.clear(multiplier)
+  await user.type(multiplier, '0.5')
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting).sales_multiplier).toBe(0.5)
+})

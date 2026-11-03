@@ -41,6 +41,27 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // Casbin-guarded routes declare themselves through
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
+	// Team management uses interactive authentication until dedicated team
+	// access-token scopes exist; native profile/key scopes grant no team access.
+	"GET /api/teams":                               accessTokenSessionRule,
+	"POST /api/teams":                              accessTokenSessionRule,
+	"GET /api/teams/:id":                           accessTokenSessionRule,
+	"GET /api/teams/:id/overview":                  accessTokenSessionRule,
+	"PUT /api/teams/:id":                           accessTokenSessionRule,
+	"GET /api/teams/:id/quota":                     accessTokenSessionRule,
+	"POST /api/teams/:id/quota":                    accessTokenSessionRule,
+	"GET /api/teams/:id/members":                   accessTokenSessionRule,
+	"PUT /api/teams/:id/members/:user_id":          accessTokenSessionRule,
+	"DELETE /api/teams/:id/members/:user_id":       accessTokenSessionRule,
+	"GET /api/teams/:id/invitations":               accessTokenSessionRule,
+	"POST /api/teams/:id/invitations":              accessTokenSessionRule,
+	"DELETE /api/teams/:id/invitations/:invite_id": accessTokenSessionRule,
+	"GET /api/teams/:id/usage":                     accessTokenSessionRule,
+	"GET /api/teams/:id/usage/export":              accessTokenSessionRule,
+	"GET /api/team-invitations/:token":             accessTokenSessionRule,
+	"POST /api/team-invitations/:token/accept":     accessTokenSessionRule,
+	"GET /api/team-key-policies/:token_id":         accessTokenSessionRule,
+	"PUT /api/team-key-policies/:token_id":         accessTokenSessionRule,
 	// router/api-router.go: top level
 	"GET /api/models":                     accessTokenScopeRule("profile:read"),
 	"GET /api/status/test":                accessTokenScopeRule("log:read"),
