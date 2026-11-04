@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -26,13 +25,13 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { teamGet, teamWrite } from '@/features/teams/api'
 import type { FundingMode, Team } from '@/features/teams/types'
 import { handleServerError } from '@/lib/handle-server-error'
+import { translateServerText } from '@/lib/server-error-message'
 
 import type { ApiKey } from '../types'
 
 export function ApiKeyFundingCell(props: { apiKey: ApiKey }) {
   const { t } = useTranslation()
   const client = useQueryClient()
-  const [chosenTeam, setChosenTeam] = useState<number>()
   const teams = useQuery({
     queryKey: ['teams', 'list'],
     queryFn: () => teamGet<Team[]>('/api/teams'),
@@ -40,8 +39,7 @@ export function ApiKeyFundingCell(props: { apiKey: ApiKey }) {
   const policy = props.apiKey.funding_policy
   const activeTeams = (teams.data ?? []).filter((team) => team.status === 1)
   const teamId =
-    (chosenTeam ?? policy?.team_id) ||
-    (activeTeams.length === 1 ? activeTeams[0].id : 0)
+    policy?.team_id ?? (activeTeams.length === 1 ? activeTeams[0].id : 0)
   const selectedTeam = activeTeams.find((team) => team.id === teamId)
   const save = useMutation({
     mutationFn: (value: { mode: FundingMode; team_id: number }) =>
@@ -54,13 +52,10 @@ export function ApiKeyFundingCell(props: { apiKey: ApiKey }) {
       toast.success(t('Changes saved'))
     },
     onError: (error) => {
-      setChosenTeam(undefined)
       handleServerError(error)
     },
   })
   const mode = save.isPending ? save.variables.mode : (policy?.mode ?? 'legacy')
-  const teamMode =
-    mode === 'team_only' || mode === 'team_first' || mode === 'personal_first'
   const automaticDisabled =
     !selectedTeam || selectedTeam.allow_personal_backup === false
   let status = ''
@@ -100,35 +95,19 @@ export function ApiKeyFundingCell(props: { apiKey: ApiKey }) {
           {t('Personal only')}
         </NativeSelectOption>
       </NativeSelect>
-      {activeTeams.length > 1 && (
-        <NativeSelect
-          size='sm'
-          className='w-full'
-          aria-label={`${t('Team')}: ${props.apiKey.name}`}
-          value={teamId}
-          disabled={save.isPending}
-          onChange={(event) => {
-            const id = Number(event.target.value)
-            setChosenTeam(id)
-            if (teamMode && id) save.mutate({ mode, team_id: id })
-          }}
-        >
-          <NativeSelectOption value={0} disabled>
-            {t('Select a team')}
-          </NativeSelectOption>
-          {activeTeams.map((team) => (
-            <NativeSelectOption key={team.id} value={team.id}>
-              {team.name}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+      {(policy?.team_name || selectedTeam) && (
+        <div className='text-muted-foreground text-xs'>
+          {t('Matched team: {{team}}', {
+            team: policy?.team_name || selectedTeam?.name,
+          })}
+        </div>
       )}
-      <div className='text-muted-foreground text-xs'>
-        {status}
-        {!save.isPending && teamMode && selectedTeam && (
-          <span className='ml-1'>{selectedTeam.name}</span>
-        )}
-      </div>
+      {policy?.resolution_error && (
+        <p role='alert' className='text-destructive text-xs'>
+          {translateServerText(t, policy.resolution_error)}
+        </p>
+      )}
+      {status && <div className='text-muted-foreground text-xs'>{status}</div>}
       {teams.isError && (
         <Button variant='ghost' size='sm' onClick={() => void teams.refetch()}>
           {t('Retry')}

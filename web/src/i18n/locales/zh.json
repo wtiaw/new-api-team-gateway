@@ -7548,6 +7548,12 @@
     "No groups granted. Members cannot call models until groups are assigned.": "尚未授权分组，成员暂时无法调用模型。",
     "The default selection must be an allowed group, such as Development. It does not create a group named default.": "默认选择须为授权分组之一，例如“开发”；不会创建名为 default 的分组。",
     "Failed to load groups": "加载分组失败",
-    "Follow default selection": "跟随默认选择"
+    "Follow default selection": "跟随默认选择",
+    "Current team": "当前团队",
+    "Matched team: {{team}}": "匹配团队：{{team}}",
+    "The selected group determines the team. Changing payment preference does not change group access.": "所选分组决定所属团队。切换付款方式不会改变分组权限。",
+    "A resource group can only belong to one team": "一个资源分组只能归属一个团队",
+    "Select a resource group to match a team": "请选择资源分组以确定所属团队",
+    "Each resource group belongs to one team. Users can join multiple teams.": "每个资源分组归属一个团队，用户可以加入多个团队。"
   }
 }

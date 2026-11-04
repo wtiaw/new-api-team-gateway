@@ -39,12 +39,12 @@ describe('Team funding selection', () => {
     expect(() => usdToQuota('Infinity')).toThrow()
   })
 
-  test('existing keys stay legacy until the owner explicitly saves a selected policy', async () => {
+  test('the policy form uses the group-matched team and saves funding preference without a team override', async () => {
     vi.spyOn(api, 'get').mockImplementation(async (url) => ({
       data: {
         success: true,
         data: url.includes('team-key-policies')
-          ? { mode: 'legacy', team_id: 0 }
+          ? { mode: 'personal_only', team_id: 7, team_name: 'Research' }
           : [{ id: 7, name: 'Research', status: 1 }],
       },
     }))
@@ -61,7 +61,7 @@ describe('Team funding selection', () => {
       </QueryClientProvider>
     )
     const mode = await screen.findByRole('combobox', { name: 'Funding source' })
-    expect(mode).toHaveValue('legacy')
+    expect(mode).toHaveValue('personal_only')
     expect(save).not.toHaveBeenCalled()
     await userEvent.selectOptions(mode, 'team_first')
     expect(
@@ -69,11 +69,11 @@ describe('Team funding selection', () => {
         'Personal backup can spend your personal balance. Personal spending has no daily or weekly limit.'
       )
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Team' }),
-      '7'
-    )
+    expect(await screen.findByText('Matched team: Research')).toBeVisible()
+    expect(
+      screen.queryByRole('combobox', { name: 'Team' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith('/api/team-key-policies/3', {

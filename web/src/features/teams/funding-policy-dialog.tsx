@@ -25,6 +25,7 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { translateServerText } from '@/lib/server-error-message'
 
 import { teamGet, teamWrite } from './api'
 import { TeamQueryState } from './query-state'
@@ -69,7 +70,7 @@ function FundingPolicyForm(props: {
   const { t } = useTranslation()
   const client = useQueryClient()
   const [mode, setMode] = useState<FundingMode>(props.policy.mode)
-  const [teamId, setTeamId] = useState(props.policy.team_id)
+  const teamId = props.policy.team_id
   const teams = useQuery({
     queryKey: ['teams', 'list'],
     queryFn: () => teamGet<Team[]>('/api/teams'),
@@ -117,34 +118,22 @@ function FundingPolicyForm(props: {
           {t('Personal first, team backup')}
         </NativeSelectOption>
       </NativeSelect>
-      {needsTeam && (
-        <TeamQueryState query={teams}>
-          {(rows) => (
-            <div className='space-y-2'>
-              <Label htmlFor='funding-team'>{t('Team')}</Label>
-              <NativeSelect
-                id='funding-team'
-                value={teamId}
-                onChange={(event) => setTeamId(Number(event.target.value))}
-              >
-                <NativeSelectOption value={0}>
-                  {t('Select a team')}
-                </NativeSelectOption>
-                {rows
-                  .filter((row) => row.status === 1)
-                  .map((row) => (
-                    <NativeSelectOption key={row.id} value={row.id}>
-                      {row.name}
-                    </NativeSelectOption>
-                  ))}
-              </NativeSelect>
-            </div>
-          )}
-        </TeamQueryState>
+      <p className='text-muted-foreground text-sm'>
+        {t('Matched team: {{team}}', {
+          team:
+            props.policy.team_name ||
+            teams.data?.find((team) => team.id === teamId)?.name ||
+            '-',
+        })}
+      </p>
+      {props.policy.resolution_error && (
+        <p role='alert' className='text-destructive text-sm'>
+          {translateServerText(t, props.policy.resolution_error)}
+        </p>
       )}
       <p className='text-muted-foreground text-sm'>
         {t(
-          'Existing keys keep native funding behavior until you save a policy. Team limits apply only to team spending.'
+          'The selected group determines the team. Changing payment preference does not change group access.'
         )}
       </p>
       {(mode === 'team_first' || mode === 'personal_first') && (
@@ -164,6 +153,7 @@ function FundingPolicyForm(props: {
       <Button
         disabled={
           save.isPending ||
+          (mode !== 'legacy' && !!props.policy.resolution_error) ||
           (automatic && backupDisabled) ||
           (needsTeam &&
             (!teamId ||

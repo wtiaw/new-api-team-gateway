@@ -164,15 +164,26 @@ export function ApiKeysMutateDrawer({
   const models = modelsData?.data || []
   const groups = useMemo<ApiKeyGroupOption[]>(
     () =>
-      Object.entries(groupsData?.data || {}).map(([key, info]) => ({
-        value: key,
-        label: key,
-        desc: info.desc ? translateServerText(t, info.desc) : key,
-        ratio: info.ratio,
-      })),
+      Object.entries(groupsData?.data || {}).map(([key, info]) => {
+        let desc = key
+        if (info.team_name) desc = `${t('Team')}: ${info.team_name}`
+        else if (info.desc) desc = translateServerText(t, info.desc)
+        return {
+          value: key,
+          label: key,
+          desc,
+          ratio: info.ratio,
+        }
+      }),
     [groupsData, t]
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
+  const hasMultipleTeams =
+    new Set(
+      Object.values(groupsData?.data || {})
+        .map((info) => info.team_id)
+        .filter((id) => id && id > 0)
+    ).size > 1
   const availableAutoGroupNames = useMemo(
     () => groups.filter((group) => group.value !== 'auto').map((g) => g.value),
     [groups]
@@ -268,16 +279,22 @@ export function ApiKeysMutateDrawer({
     isUpdate && currentRow ? `update:${currentRow.id}` : 'create'
   const isFormInitialized = initializedTarget === formTarget
   const selectedGroup = form.watch('group')
+  const needsGroupSelection =
+    hasMultipleTeams &&
+    !groups.some(
+      (group) => group.value === selectedGroup && group.value !== 'auto'
+    )
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
     if (groups.length === 0) return
     const currentGroup = selectedGroup
     if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
-      const fallback =
-        groups.find((g) => g.value === 'default')?.value ??
-        groups[0]?.value ??
-        ''
+      const fallback = hasMultipleTeams
+        ? ''
+        : (groups.find((g) => g.value === 'default')?.value ??
+          groups[0]?.value ??
+          '')
       form.setValue('group', fallback)
       if (currentGroup === 'auto') {
         form.setValue('auto_groups', [])
@@ -285,9 +302,20 @@ export function ApiKeysMutateDrawer({
         form.setValue('cross_group_retry', false)
       }
     }
-  }, [groups, form, selectedGroup])
+  }, [groups, form, selectedGroup, hasMultipleTeams])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
+    if (
+      hasMultipleTeams &&
+      !groups.some(
+        (group) => group.value === data.group && group.value !== 'auto'
+      )
+    ) {
+      form.setError('group', {
+        message: t('Select a resource group to match a team'),
+      })
+      return
+    }
     setIsSubmitting(true)
     try {
       const basePayload = transformFormDataToPayload(data)
@@ -439,6 +467,11 @@ export function ApiKeysMutateDrawer({
                         placeholder={t('Select a group')}
                       />
                     </FormControl>
+                    {hasMultipleTeams && (
+                      <FormDescription>
+                        {t('Select a resource group to match a team')}
+                      </FormDescription>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -787,7 +820,7 @@ export function ApiKeysMutateDrawer({
           <Button
             type='button'
             onClick={form.handleSubmit(onSubmit, onInvalid)}
-            disabled={!isFormInitialized || isSubmitting}
+            disabled={!isFormInitialized || isSubmitting || needsGroupSelection}
             className='w-full sm:w-auto'
           >
             {isSubmitting ? t('Saving...') : t('Save changes')}

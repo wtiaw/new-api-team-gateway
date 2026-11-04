@@ -7548,6 +7548,12 @@
     "No groups granted. Members cannot call models until groups are assigned.": "Aucun groupe autorisé. Les membres ne peuvent pas appeler de modèle avant attribution.",
     "The default selection must be an allowed group, such as Development. It does not create a group named default.": "Choisissez un groupe autorisé, par exemple Développement. Aucun groupe nommé default n’est créé.",
     "Failed to load groups": "Impossible de charger les groupes",
-    "Follow default selection": "Suivre la sélection par défaut"
+    "Follow default selection": "Suivre la sélection par défaut",
+    "Current team": "Équipe actuelle",
+    "Matched team: {{team}}": "Équipe correspondante : {{team}}",
+    "The selected group determines the team. Changing payment preference does not change group access.": "Le groupe sélectionné détermine l’équipe. Le mode de paiement ne modifie pas les droits d’accès au groupe.",
+    "A resource group can only belong to one team": "Un groupe de ressources ne peut appartenir qu’à une seule équipe.",
+    "Select a resource group to match a team": "Sélectionnez un groupe de ressources pour déterminer l’équipe.",
+    "Each resource group belongs to one team. Users can join multiple teams.": "Chaque groupe de ressources appartient à une équipe. Les utilisateurs peuvent rejoindre plusieurs équipes."
   }
 }

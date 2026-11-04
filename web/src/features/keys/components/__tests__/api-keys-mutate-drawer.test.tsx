@@ -86,7 +86,18 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
   }
 }
 
-async function renderCreateDrawer(): Promise<void> {
+async function renderCreateDrawer(
+  groupData?: Record<
+    string,
+    {
+      desc: string
+      ratio: number | string
+      team_id?: number
+      team_name?: string
+    }
+  >,
+  saveAllowed = true
+): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -105,7 +116,7 @@ async function renderCreateDrawer(): Promise<void> {
     ['user-groups'],
     {
       success: true,
-      data: {
+      data: groupData ?? {
         auto: { desc: 'Automatic routing', ratio: 'auto' },
         default: { desc: 'Standard access', ratio: 1 },
         vip: { desc: 'Priority access', ratio: 2 },
@@ -135,7 +146,11 @@ async function renderCreateDrawer(): Promise<void> {
   await waitFor(
     () => {
       const saveButton = findButton('Save changes', false)
-      expect(saveButton).toBeEnabled()
+      if (saveAllowed) expect(saveButton).toBeEnabled()
+      else {
+        expect(queryClient.isFetching()).toBe(0)
+        expect(saveButton).toBeDisabled()
+      }
     },
     { timeout: 1500 }
   )
@@ -206,6 +221,36 @@ afterEach(() => {
 })
 
 describe('API keys mutate drawer Auto group integration', () => {
+  test('a multi-team key requires an actual group and shows which team owns each choice', async () => {
+    const payloads: Array<Record<string, unknown>> = []
+    installApiFixtures(payloads)
+    const groups = {
+      development: {
+        desc: 'Development',
+        ratio: 1,
+        team_id: 7,
+        team_name: 'Research',
+      },
+      testing: {
+        desc: 'Testing',
+        ratio: 1.5,
+        team_id: 9,
+        team_name: 'Testing',
+      },
+    }
+    const fixtureGet = apiClient.get
+    apiClient.get = async (url, data) =>
+      url === '/api/user/self/groups'
+        ? { data: { success: true, data: groups } }
+        : fixtureGet(url, data)
+    await renderCreateDrawer(groups, false)
+    changeInput(getControlByLabel('Name'), 'multi-team-key')
+    selectComboboxOption(getControlByLabel('Group'), 'Team: Testing')
+    await waitFor(() => expect(findButton('Save changes', true)).toBeEnabled())
+    fireEvent.click(findButton('Save changes', true))
+    await waitFor(() => expect(payloads).toHaveLength(1))
+    expect(payloads[0]).toMatchObject({ group: 'testing' })
+  })
   test('inherits the root Auto order and sends an empty override for every batch-created key', async () => {
     const createdPayloads: Array<Record<string, unknown>> = []
     installApiFixtures(createdPayloads)

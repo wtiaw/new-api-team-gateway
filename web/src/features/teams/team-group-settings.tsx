@@ -105,6 +105,11 @@ export function TeamGroupSettings(props: {
           'Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.'
         )}
       </p>
+      <p className='text-muted-foreground text-xs'>
+        {t(
+          'Each resource group belongs to one team. Users can join multiple teams.'
+        )}
+      </p>
       {options.isError ? (
         <ErrorState
           title={t('Failed to load groups')}

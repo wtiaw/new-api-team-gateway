@@ -18,12 +18,12 @@ import (
 )
 
 var (
-	ErrTeamAccess     = errors.New("Team access denied")
-	ErrTeamInput      = errors.New("Invalid team settings")
-	ErrTeamInvitation = errors.New("Team invitation is unavailable")
-	ErrTeamOperation  = errors.New("Team balance operation conflicts with an earlier request")
-	ErrTeamMembership = errors.New("This user already belongs to another team")
-	ErrTeamDemotion   = errors.New("Remove extra team memberships before demoting this administrator")
+	ErrTeamAccess        = errors.New("Team access denied")
+	ErrTeamInput         = errors.New("Invalid team settings")
+	ErrTeamInvitation    = errors.New("Team invitation is unavailable")
+	ErrTeamOperation     = errors.New("Team balance operation conflicts with an earlier request")
+	ErrTeamGroupConflict = errors.New("A resource group can only belong to one team")
+	ErrTeamGroupRequired = errors.New("Select a resource group to match a team")
 )
 
 type Team struct {
@@ -117,13 +117,15 @@ type TeamMemberView struct {
 
 func MigrateTeams(db *gorm.DB) error {
 	addBackupSetting := !db.Migrator().HasColumn(&Team{}, "allow_personal_backup")
-	if err := db.AutoMigrate(&Team{}, &TeamMember{}, &TeamInvitation{}, &TeamBalanceOperation{}, &TeamManagementEvent{}); err != nil {
+	if err := db.AutoMigrate(&Team{}, &TeamMember{}, &TeamInvitation{}, &TeamBalanceOperation{}, &TeamManagementEvent{}, &TeamGroupGrant{}); err != nil {
 		return err
 	}
 	if addBackupSetting {
-		return db.Model(&Team{}).Where("1 = 1").Update("allow_personal_backup", true).Error
+		if err := db.Model(&Team{}).Where("1 = 1").Update("allow_personal_backup", true).Error; err != nil {
+			return err
+		}
 	}
-	return nil
+	return migrateTeamGroupGrants(db)
 }
 func teamEvent(tx *gorm.DB, teamID, actorID int, action string, before, after any) error {
 	b, err := common.Marshal(before)
@@ -158,22 +160,9 @@ func teamMembershipUser(tx *gorm.DB, userID int) (*User, error) {
 	return &user, nil
 }
 
-// requireSingleTeamMembership needs the user lock held through the transaction.
-func requireSingleTeamMembership(tx *gorm.DB, user *User, teamID int) error {
+func requireActiveTeamMember(user *User) error {
 	if user.Status != common.UserStatusEnabled {
 		return ErrTeamInput
-	}
-	if user.Role >= common.RoleAdminUser {
-		return nil
-	}
-	var other []TeamMember
-	// Use a current locking read, including on MySQL's repeatable-read isolation:
-	// authorization reads may already have established an older snapshot.
-	if err := lockForUpdate(tx).Where("user_id = ? AND status = ? AND team_id <> ?", user.Id, 1, teamID).Limit(1).Find(&other).Error; err != nil {
-		return err
-	}
-	if len(other) != 0 {
-		return ErrTeamMembership
 	}
 	return nil
 }
@@ -250,7 +239,7 @@ func CreateTeam(actorID, globalRole int, input TeamCreate) (*Team, error) {
 		if err != nil {
 			return err
 		}
-		if err = requireSingleTeamMembership(tx, admin, 0); err != nil {
+		if err = requireActiveTeamMember(admin); err != nil {
 			return err
 		}
 		now := time.Now().Unix()
@@ -260,6 +249,9 @@ func CreateTeam(actorID, globalRole int, input TeamCreate) (*Team, error) {
 		}
 		team = Team{AllowedGroups: append([]string{}, input.AllowedGroups...), DefaultGroup: input.DefaultGroup, AllowPersonalBackup: allowBackup, Name: input.Name, Status: 1, DailyLimit: input.DailyLimit, WeeklyLimit: input.WeeklyLimit, CreatedAt: now, UpdatedAt: now}
 		if err = tx.Create(&team).Error; err != nil {
+			return err
+		}
+		if err = syncTeamGroupGrants(tx, team.ID, team.AllowedGroups); err != nil {
 			return err
 		}
 		if err = tx.Create(&TeamMember{TeamID: team.ID, UserID: input.AdminUserID, Role: "admin", Status: 1, CreatedAt: now}).Error; err != nil {
@@ -293,6 +285,9 @@ func UpdateTeam(teamID, actorID, globalRole int, input TeamUpdate) (*Team, error
 				defaultGroup = *input.DefaultGroup
 			}
 			if err := ValidateTeamGroups(groups, defaultGroup); err != nil {
+				return err
+			}
+			if err := syncTeamGroupGrants(tx, teamID, groups); err != nil {
 				return err
 			}
 			encoded, err := common.Marshal(groups)
@@ -333,7 +328,7 @@ func UpdateTeam(teamID, actorID, globalRole int, input TeamUpdate) (*Team, error
 			if err != nil {
 				return err
 			}
-			if err = requireSingleTeamMembership(tx, admin, teamID); err != nil {
+			if err = requireActiveTeamMember(admin); err != nil {
 				return err
 			}
 			var previousAdmins []TeamMember
@@ -413,7 +408,7 @@ func UpdateTeamMember(teamID, actorID, userID, globalRole int, role *string, sta
 			active = next == 1
 		}
 		if active {
-			if err = requireSingleTeamMembership(tx, user, teamID); err != nil {
+			if err = requireActiveTeamMember(user); err != nil {
 				return err
 			}
 		}
@@ -626,7 +621,7 @@ func AcceptTeamInvitation(raw string, userID int) (*TeamMember, error) {
 		if err != nil {
 			return err
 		}
-		if err = requireSingleTeamMembership(tx, user, team.ID); err != nil {
+		if err = requireActiveTeamMember(user); err != nil {
 			return err
 		}
 		if invite.AcceptedBy == userID {
@@ -694,9 +689,9 @@ func ValidateTeamGroups(groups []string, defaultGroup string) error {
 	return nil
 }
 
-// ActiveTeamGroupProfile always reads current membership, so revocations apply to old keys.
+// ActiveTeamGroupProfiles always reads current membership, so revocations apply to old keys.
 // A system administrator without membership retains native testing privileges.
-func ActiveTeamGroupProfile(userID, preferredTeamID int) (*Team, bool, error) {
+func ActiveTeamGroupProfiles(userID int) ([]Team, bool, error) {
 	var user User
 	if err := DB.First(&user, userID).Error; err != nil {
 		return nil, false, err
@@ -706,19 +701,13 @@ func ActiveTeamGroupProfile(userID, preferredTeamID int) (*Team, bool, error) {
 	}
 	var teams []Team
 	query := DB.Model(&Team{}).Table(DB.NamingStrategy.TableName("Team")+" AS teams").Select("teams.*").Joins("JOIN "+DB.NamingStrategy.TableName("TeamMember")+" AS team_members ON team_members.team_id = teams.id").Where("team_members.user_id = ? AND team_members.status = ? AND teams.status = ?", userID, 1, 1)
-	if preferredTeamID > 0 {
-		query = query.Where("teams.id = ?", preferredTeamID)
-	}
-	if err := query.Order("teams.id").Limit(2).Find(&teams).Error; err != nil {
+	if err := query.Order("teams.id").Find(&teams).Error; err != nil {
 		return nil, false, err
 	}
-	if len(teams) > 1 {
-		return nil, false, ErrTeamAccess
-	}
 	if len(teams) > 0 {
-		return &teams[0], false, nil
+		return teams, false, nil
 	}
-	if preferredTeamID == 0 && user.Role >= common.RoleAdminUser {
+	if user.Role >= common.RoleAdminUser {
 		// Disabled or removed memberships must not silently restore native privileges.
 		var memberships int64
 		if err := DB.Model(&TeamMember{}).Where("user_id = ?", userID).Count(&memberships).Error; err != nil {
@@ -729,6 +718,57 @@ func ActiveTeamGroupProfile(userID, preferredTeamID int) (*Team, bool, error) {
 		}
 	}
 	return nil, false, nil
+}
+
+func matchActiveTeamGroupProfile(teams []Team, native bool, preferredTeamID int, group string) (*Team, bool, error) {
+	if group != "" && group != "auto" {
+		var matched *Team
+		for i := range teams {
+			for _, granted := range teams[i].AllowedGroups {
+				if granted != group {
+					continue
+				}
+				if matched != nil {
+					return nil, false, ErrTeamGroupConflict
+				}
+				matched = &teams[i]
+			}
+		}
+		if matched != nil {
+			return matched, false, nil
+		}
+		if native && preferredTeamID == 0 {
+			return nil, true, nil
+		}
+		return nil, false, ErrTeamAccess
+	}
+	if preferredTeamID > 0 {
+		for i := range teams {
+			if teams[i].ID == preferredTeamID {
+				return &teams[i], false, nil
+			}
+		}
+		return nil, false, ErrTeamAccess
+	}
+	if len(teams) > 1 {
+		return nil, false, ErrTeamGroupRequired
+	}
+	if len(teams) == 1 {
+		return &teams[0], false, nil
+	}
+	return nil, native, nil
+}
+
+func MatchTeamGroupProfile(userID, preferredTeamID int, group string) (*Team, bool, error) {
+	teams, native, err := ActiveTeamGroupProfiles(userID)
+	if err != nil {
+		return nil, false, err
+	}
+	return matchActiveTeamGroupProfile(teams, native, preferredTeamID, group)
+}
+
+func ActiveTeamGroupProfile(userID, preferredTeamID int) (*Team, bool, error) {
+	return MatchTeamGroupProfile(userID, preferredTeamID, "")
 }
 
 func (t *Team) AfterFind(_ *gorm.DB) error {

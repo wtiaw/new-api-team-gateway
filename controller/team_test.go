@@ -120,3 +120,43 @@ func TestTeamOverviewMemberFilterQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestUserGroupOptionsIdentifyOnlyJoinedTeams(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, model.MigrateTeams(db))
+	original := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"development":1,"testing":1.5,"other":2,"default":1}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(original)) })
+	user := model.User{Username: "joined-group-options", AffCode: "joined-group-options", Group: "default", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, db.Create(&user).Error)
+	teams := []model.Team{
+		{Name: "Development", Status: 1, AllowedGroups: []string{"development"}, DefaultGroup: "development"},
+		{Name: "Testing", Status: 1, AllowedGroups: []string{"testing"}, DefaultGroup: "testing"},
+		{Name: "Unjoined", Status: 1, AllowedGroups: []string{"other"}, DefaultGroup: "other"},
+	}
+	for i := range teams {
+		require.NoError(t, db.Create(&teams[i]).Error)
+		if i < 2 {
+			require.NoError(t, db.Create(&model.TeamMember{TeamID: teams[i].ID, UserID: user.Id, Status: 1, Role: "member"}).Error)
+		}
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("id", user.Id)
+	GetUserGroups(c)
+	var response struct {
+		Success bool `json:"success"`
+		Data    map[string]struct {
+			TeamID   int    `json:"team_id"`
+			TeamName string `json:"team_name"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.Len(t, response.Data, 2)
+	assert.Equal(t, teams[0].ID, response.Data["development"].TeamID)
+	assert.Equal(t, teams[1].Name, response.Data["testing"].TeamName)
+	assert.NotContains(t, response.Data, "other")
+	assert.NotContains(t, response.Data, "default")
+	assert.NotContains(t, response.Data, "auto")
+}

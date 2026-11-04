@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -15,6 +16,16 @@ import (
 )
 
 const BillingSourceTeam = "team"
+
+func TeamPolicyClientMessage(c *gin.Context, err error) string {
+	if errors.Is(err, model.ErrTeamGroupRequired) {
+		return i18n.T(c, i18n.MsgTeamGroupRequired)
+	}
+	if errors.Is(err, model.ErrTeamGroupConflict) {
+		return i18n.T(c, i18n.MsgTeamGroupConflict)
+	}
+	return err.Error()
+}
 
 func TeamPolicyFromContext(c *gin.Context) *model.TeamKeyPolicy {
 	if c == nil {
@@ -38,9 +49,13 @@ func ValidateTeamTokenPolicy(c *gin.Context, tokenID, userID int) error {
 	if err := model.DB.Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
 		return err
 	}
-	group, err := ResolveAccountGroup(userID, policy.TeamID, common.GetContextKeyString(c, constant.ContextKeyUserGroup), token.Group)
+	group, team, err := resolveAccountResource(userID, policy.TeamID, common.GetContextKeyString(c, constant.ContextKeyUserGroup), token.Group)
 	if err != nil {
 		return err
+	}
+	policy.TeamID = 0
+	if team != nil {
+		policy.TeamID = team.ID
 	}
 	c.Set("resource_team_id", policy.TeamID)
 	common.SetContextKey(c, constant.ContextKeyUsingGroup, group)
@@ -51,13 +66,18 @@ func ValidateTeamTokenPolicy(c *gin.Context, tokenID, userID int) error {
 // Playground requests have a login session rather than a stored API key.
 // Resolve the account default, then enforce the same team funding checks.
 func ValidatePlaygroundTeamPolicy(c *gin.Context, userID int) error {
-	policy, err := model.DefaultTeamKeyPolicy(userID)
+	requested := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	policy, err := model.DefaultTeamKeyPolicyForGroup(userID, requested)
 	if err != nil {
 		return err
 	}
-	group, err := ResolveAccountGroup(userID, policy.TeamID, common.GetContextKeyString(c, constant.ContextKeyUserGroup), common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+	group, team, err := resolveAccountResource(userID, policy.TeamID, common.GetContextKeyString(c, constant.ContextKeyUserGroup), requested)
 	if err != nil {
 		return err
+	}
+	policy.TeamID = 0
+	if team != nil {
+		policy.TeamID = team.ID
 	}
 	c.Set("resource_team_id", policy.TeamID)
 	common.SetContextKey(c, constant.ContextKeyUsingGroup, group)

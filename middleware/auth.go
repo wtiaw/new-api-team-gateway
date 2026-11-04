@@ -623,7 +623,7 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 		if err := service.ValidateTeamTokenPolicy(c, token.Id, token.UserId); err != nil {
-			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+			abortWithOpenAiMessage(c, http.StatusForbidden, service.TeamPolicyClientMessage(c, err))
 			return
 		}
 		c.Next()

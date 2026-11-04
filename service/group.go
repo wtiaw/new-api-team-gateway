@@ -136,43 +136,73 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 	return ratio_setting.GetGroupRatio(group)
 }
 
-// GetAccountUsableGroups is the resource authority for both funding sources.
-func GetAccountUsableGroups(userID int, userGroup string) (map[string]string, error) {
-	team, native, err := model.ActiveTeamGroupProfile(userID, 0)
+type AccountGroupGrant struct {
+	Description string
+	TeamID      int
+	TeamName    string
+}
+
+func GetAccountGroupGrants(userID int, userGroup string) (map[string]AccountGroupGrant, error) {
+	teams, native, err := model.ActiveTeamGroupProfiles(userID)
 	if err != nil {
 		return nil, err
 	}
 	if native {
-		return GetUserUsableGroups(userGroup), nil
+		grants := make(map[string]AccountGroupGrant)
+		for name, description := range GetUserUsableGroups(userGroup) {
+			grants[name] = AccountGroupGrant{Description: description}
+		}
+		return grants, nil
 	}
-	groups := make(map[string]string)
-	if team != nil {
+	groups := make(map[string]AccountGroupGrant)
+	for _, team := range teams {
 		for _, group := range team.AllowedGroups {
 			if group != "" && group != "auto" && ratio_setting.ContainsGroupRatio(group) {
-				groups[group] = setting.GetUsableGroupDescription(group)
+				if existing, ok := groups[group]; ok && existing.TeamID != team.ID {
+					return nil, model.ErrTeamGroupConflict
+				}
+				groups[group] = AccountGroupGrant{Description: setting.GetUsableGroupDescription(group), TeamID: team.ID, TeamName: team.Name}
 			}
 		}
 	}
 	return groups, nil
 }
 
+// GetAccountUsableGroups is the resource authority for both funding sources.
+func GetAccountUsableGroups(userID int, userGroup string) (map[string]string, error) {
+	grants, err := GetAccountGroupGrants(userID, userGroup)
+	if err != nil {
+		return nil, err
+	}
+	groups := make(map[string]string, len(grants))
+	for name, grant := range grants {
+		groups[name] = grant.Description
+	}
+	return groups, nil
+}
+
 // ResolveAccountGroup prevents native defaults and saved keys from escaping team grants.
 func ResolveAccountGroup(userID, teamID int, userGroup, requested string) (string, error) {
-	team, native, err := model.ActiveTeamGroupProfile(userID, teamID)
+	group, _, err := resolveAccountResource(userID, teamID, userGroup, requested)
+	return group, err
+}
+
+func resolveAccountResource(userID, teamID int, userGroup, requested string) (string, *model.Team, error) {
+	team, native, err := model.MatchTeamGroupProfile(userID, teamID, requested)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if native {
 		if requested == "" {
 			requested = userGroup
 		}
 		if requested == "auto" || IsUserSelectableGroup(userGroup, requested) {
-			return requested, nil
+			return requested, nil, nil
 		}
-		return "", model.ErrTeamAccess
+		return "", nil, model.ErrTeamAccess
 	}
 	if team == nil {
-		return "", model.ErrTeamAccess
+		return "", nil, model.ErrTeamAccess
 	}
 	groups := make([]string, 0, len(team.AllowedGroups))
 	for _, group := range team.AllowedGroups {
@@ -181,10 +211,10 @@ func ResolveAccountGroup(userID, teamID int, userGroup, requested string) (strin
 		}
 	}
 	if len(groups) == 0 {
-		return "", model.ErrTeamAccess
+		return "", nil, model.ErrTeamAccess
 	}
 	if requested == "auto" {
-		return requested, nil
+		return requested, team, nil
 	}
 	if requested == "" {
 		requested = team.DefaultGroup
@@ -194,10 +224,10 @@ func ResolveAccountGroup(userID, teamID int, userGroup, requested string) (strin
 	}
 	for _, group := range groups {
 		if group == requested {
-			return requested, nil
+			return requested, team, nil
 		}
 	}
-	return "", model.ErrTeamAccess
+	return "", nil, model.ErrTeamAccess
 }
 
 func GetAccountAutoGroups(c *gin.Context, userID int, userGroup string) []string {

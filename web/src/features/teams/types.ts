@@ -124,4 +124,7 @@ export type FundingMode =
 export interface FundingPolicy {
   mode: FundingMode
   team_id: number
+  team_name?: string
+  resource_group?: string
+  resolution_error?: string
 }

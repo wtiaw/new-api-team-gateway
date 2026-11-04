@@ -327,14 +327,14 @@ func TestTeamBackupSettingMigrationPreservesExistingChoice(t *testing.T) {
 	require.False(t, team.AllowPersonalBackup, "repeated startup must preserve an explicit system-admin restriction")
 }
 
-func TestTeamSingleActiveMembership(t *testing.T) {
+func TestTeamMultipleActiveMembershipsAndIndependentAdministration(t *testing.T) {
 	sys, admin, member, first := setupTeamTest(t)
 	second, err := CreateTeam(sys.Id, 10, TeamCreate{Name: "Second", AdminUserID: sys.Id})
 	require.NoError(t, err)
-	_, err = CreateTeam(sys.Id, 10, TeamCreate{Name: "Rejected", AdminUserID: admin.Id})
-	require.EqualError(t, err, "This user already belongs to another team")
+	_, err = CreateTeam(sys.Id, 10, TeamCreate{Name: "Another administered team", AdminUserID: admin.Id})
+	require.NoError(t, err)
 	_, err = UpdateTeam(second.ID, sys.Id, 10, TeamUpdate{AdminUserID: &admin.Id})
-	require.EqualError(t, err, "This user already belongs to another team")
+	require.NoError(t, err)
 	_, firstToken, err := CreateTeamInvitation(first.ID, sys.Id, 10, 7)
 	require.NoError(t, err)
 	_, secondToken, err := CreateTeamInvitation(second.ID, sys.Id, 10, 7)
@@ -351,13 +351,13 @@ func TestTeamSingleActiveMembership(t *testing.T) {
 	_, err = UpdateTeam(first.ID, sys.Id, 10, TeamUpdate{Status: new(2)})
 	require.NoError(t, err)
 	_, err = AcceptTeamInvitation(secondToken, member.Id)
-	require.EqualError(t, err, "This user already belongs to another team")
+	require.NoError(t, err, "a disabled first team must not block joining another team")
 	require.NoError(t, UpdateTeamMember(first.ID, sys.Id, member.Id, 10, nil, nil, true))
 	_, err = AcceptTeamInvitation(secondToken, member.Id)
 	require.NoError(t, err, "rejected invitations must remain usable after leaving the previous team")
-	require.EqualError(t, UpdateTeamMember(first.ID, sys.Id, member.Id, 10, nil, new(1), false), "This user already belongs to another team")
+	require.NoError(t, UpdateTeamMember(first.ID, sys.Id, member.Id, 10, nil, new(1), false))
 	_, err = UpdateTeam(first.ID, sys.Id, 10, TeamUpdate{AdminUserID: &member.Id})
-	require.EqualError(t, err, "This user already belongs to another team")
+	require.NoError(t, err)
 	require.NoError(t, UpdateTeamMember(second.ID, sys.Id, member.Id, 10, nil, nil, true))
 	require.NoError(t, UpdateTeamMember(first.ID, sys.Id, member.Id, 10, nil, new(1), false), "reactivation succeeds after the other membership is removed")
 	var unchanged User
@@ -415,13 +415,13 @@ func TestTeamConcurrentCrossTeamMembership(t *testing.T) {
 				if err == nil {
 					accepted++
 				} else {
-					require.EqualError(t, err, "This user already belongs to another team")
+					require.NoError(t, err)
 				}
 			}
-			require.Equal(t, 1, accepted)
+			require.Equal(t, 2, accepted)
 			var count int64
 			require.NoError(t, DB.Model(&TeamMember{}).Where("user_id = ? AND status = ?", member.Id, 1).Count(&count).Error)
-			require.EqualValues(t, 1, count)
+			require.EqualValues(t, 2, count)
 		})
 	}
 }
@@ -431,7 +431,7 @@ func TestTeamHistoricalMultipleMembershipPreserved(t *testing.T) {
 	second, err := CreateTeam(sys.Id, 10, TeamCreate{Name: "Historical", AdminUserID: sys.Id})
 	require.NoError(t, err)
 	require.NoError(t, DB.Create(&TeamMember{TeamID: second.ID, UserID: admin.Id, Role: "member", Status: 1}).Error)
-	require.EqualError(t, UpdateTeamMember(first.ID, sys.Id, admin.Id, 10, new("member"), nil, false), "This user already belongs to another team")
+	require.NoError(t, UpdateTeamMember(first.ID, sys.Id, admin.Id, 10, new("member"), nil, false))
 	var count int64
 	require.NoError(t, DB.Model(&TeamMember{}).Where("user_id = ? AND status = ?", admin.Id, 1).Count(&count).Error)
 	require.EqualValues(t, 2, count, "historical data must never be unlinked automatically")
@@ -530,4 +530,107 @@ func TestTeamGroupGrantsAreSystemManaged(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, updated.AllowedGroups)
 	require.Empty(t, updated.DefaultGroup)
+}
+
+func TestTeamResourceGroupHasOneOwnerUntilExplicitlyReleased(t *testing.T) {
+	sys, _, _, first := setupTeamTest(t)
+	original := ratio_setting.GroupRatio2JSONString()
+	stem := fmt.Sprintf("exclusive-%d", first.ID)
+	upper, lower := stem+"-A", stem+"-a"
+	encoded, err := common.Marshal(map[string]float64{upper: 1, lower: 1.5})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(string(encoded)))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(original)) })
+	_, err = UpdateTeam(first.ID, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{upper}), DefaultGroup: &upper})
+	require.NoError(t, err)
+	second, err := CreateTeam(sys.Id, 10, TeamCreate{Name: "Distinct exact group", AdminUserID: sys.Id, AllowedGroups: []string{lower}, DefaultGroup: lower})
+	require.NoError(t, err, "resource group names keep their exact case on all databases")
+	_, err = CreateTeam(sys.Id, 10, TeamCreate{Name: "Conflicting resource group", AdminUserID: sys.Id, AllowedGroups: []string{upper}, DefaultGroup: upper})
+	require.EqualError(t, err, "A resource group can only belong to one team")
+	_, err = UpdateTeam(first.ID, sys.Id, 10, TeamUpdate{Status: new(2)})
+	require.NoError(t, err)
+	_, err = UpdateTeam(second.ID, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{upper, lower}), DefaultGroup: &lower})
+	require.EqualError(t, err, "A resource group can only belong to one team", "disabling a team must not transfer ownership")
+	stored, _, err := GetTeam(second.ID, sys.Id, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{lower}, stored.AllowedGroups, "failed assignment rolls back all authorization changes")
+	_, err = UpdateTeam(first.ID, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{}), DefaultGroup: new("")})
+	require.NoError(t, err)
+	_, err = UpdateTeam(second.ID, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{upper, lower}), DefaultGroup: &lower})
+	require.NoError(t, err)
+	require.NoError(t, MigrateTeams(DB))
+	require.NoError(t, MigrateTeams(DB), "repeated startup preserves the explicit owner")
+	_, err = UpdateTeam(first.ID, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{upper}), DefaultGroup: &upper})
+	require.EqualError(t, err, "A resource group can only belong to one team")
+}
+
+func TestTeamConcurrentResourceGroupClaimsHaveOneOwner(t *testing.T) {
+	sys, _, _, first := setupTeamTest(t)
+	second, err := CreateTeam(sys.Id, 10, TeamCreate{Name: "Second claimant", AdminUserID: sys.Id})
+	require.NoError(t, err)
+	original := ratio_setting.GroupRatio2JSONString()
+	group := fmt.Sprintf("claimed-%d", first.ID)
+	encoded, err := common.Marshal(map[string]float64{group: 1})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(string(encoded)))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(original)) })
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, id := range []int{first.ID, second.ID} {
+		wg.Go(func() {
+			<-start
+			_, err := UpdateTeam(id, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{group}), DefaultGroup: &group})
+			results <- err
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	winners := 0
+	for err := range results {
+		if err == nil {
+			winners++
+		} else {
+			require.EqualError(t, err, "A resource group can only belong to one team")
+		}
+	}
+	require.Equal(t, 1, winners)
+	var owners []Team
+	require.NoError(t, DB.Where("id IN ?", []int{first.ID, second.ID}).Find(&owners).Error)
+	granted := 0
+	for _, owner := range owners {
+		if len(owner.AllowedGroups) == 1 {
+			granted++
+		}
+	}
+	require.Equal(t, 1, granted, "the authorization snapshot and unique ownership must commit together")
+}
+
+func TestTeamGroupOwnershipMigrationBackfillsAndRejectsLegacyOverlap(t *testing.T) {
+	sys, _, _, first := setupTeamTest(t)
+	second, err := CreateTeam(sys.Id, 10, TeamCreate{Name: "Legacy second team", AdminUserID: sys.Id})
+	require.NoError(t, err)
+	group := fmt.Sprintf("legacy-grant-%d", first.ID)
+	encoded, err := common.Marshal([]string{group})
+	require.NoError(t, err)
+	// Simulate a release that stored grants only on teams, without the guard.
+	require.NoError(t, DB.Model(&Team{}).Where("id = ?", first.ID).Update("allowed_groups", string(encoded)).Error)
+	orphan := TeamGroupGrant{GroupHash: teamGroupHash(group), GroupName: group, TeamID: -1}
+	require.NoError(t, DB.Create(&orphan).Error)
+	require.NoError(t, MigrateTeams(DB))
+	var owner TeamGroupGrant
+	require.NoError(t, DB.First(&owner, "group_hash = ?", orphan.GroupHash).Error)
+	require.Equal(t, first.ID, owner.TeamID, "orphan guards cannot prevent valid legacy backfill")
+	require.NoError(t, MigrateTeams(DB))
+	require.NoError(t, DB.Model(&Team{}).Where("id = ?", second.ID).Update("allowed_groups", string(encoded)).Error)
+	t.Cleanup(func() {
+		require.NoError(t, DB.Model(&Team{}).Where("id = ?", second.ID).Update("allowed_groups", "[]").Error)
+	})
+	require.ErrorIs(t, MigrateTeams(DB), ErrTeamGroupConflict, "overlapping legacy grants require explicit administrator resolution")
+	require.NoError(t, DB.First(&owner, "group_hash = ?", orphan.GroupHash).Error)
+	require.Equal(t, first.ID, owner.TeamID, "failed migration rolls back the derived guard atomically")
+	var stored Team
+	require.NoError(t, DB.First(&stored, second.ID).Error)
+	require.Equal(t, []string{group}, stored.AllowedGroups, "migration never silently rewrites legacy authorization")
 }

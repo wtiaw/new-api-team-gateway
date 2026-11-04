@@ -7548,6 +7548,12 @@
     "No groups granted. Members cannot call models until groups are assigned.": "グループが未許可のため、メンバーはモデルを利用できません。",
     "The default selection must be an allowed group, such as Development. It does not create a group named default.": "「開発」など許可済みグループを既定として選びます。default という名前のグループは作成しません。",
     "Failed to load groups": "グループの読み込みに失敗しました",
-    "Follow default selection": "既定の選択に従う"
+    "Follow default selection": "既定の選択に従う",
+    "Current team": "現在のチーム",
+    "Matched team: {{team}}": "対応チーム: {{team}}",
+    "The selected group determines the team. Changing payment preference does not change group access.": "選択したグループでチームが決まります。支払い方法を変えてもグループのアクセス権限は変わりません。",
+    "A resource group can only belong to one team": "リソースグループは1つのチームにのみ属します。",
+    "Select a resource group to match a team": "リソースグループを選択してチームを指定してください。",
+    "Each resource group belongs to one team. Users can join multiple teams.": "各リソースグループは1つのチームに属します。ユーザーは複数のチームに参加できます。"
   }
 }

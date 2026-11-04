@@ -348,6 +348,7 @@ async function renderKeysPage(
         ...currentKey,
         funding_policy: {
           ...(data as NonNullable<ApiKey['funding_policy']>),
+          team_id: currentKey.funding_policy?.team_id ?? 0,
           is_default: false,
         },
       }
@@ -432,26 +433,39 @@ it.each([false, true])(
   }
 )
 
-it('restores the actual team when an inline funding save fails', async () => {
+it('shows the team matched by the key group without allowing a manual team override', async () => {
   const { put } = await renderKeysPage(1, {}, [
     { id: 9, name: 'Research', status: 1, allow_personal_backup: true },
     { id: 10, name: 'Restricted', status: 1, allow_personal_backup: false },
   ])
-  put.mockRejectedValueOnce(
-    new Error('Personal backup is disabled for this team')
-  )
-  const team = await screen.findByRole('combobox', { name: 'Team: production' })
-  await userEvent.selectOptions(team, '10')
-  await waitFor(() =>
-    expect(put).toHaveBeenCalledWith('/api/team-key-policies/7', {
-      mode: 'team_first',
-      team_id: 10,
-    })
-  )
-  await waitFor(() => expect(team).toHaveValue('9'))
+  expect(await screen.findByText('Matched team: Research')).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Team: production' })
+  ).not.toBeInTheDocument()
+  expect(put).not.toHaveBeenCalled()
   expect(
     screen.getByRole('combobox', { name: 'Funding source: production' })
   ).toHaveValue('team_first')
+})
+
+it('does not infer a team when the server could not authorize the key group', async () => {
+  await renderKeysPage(1, {
+    funding_policy: {
+      mode: 'personal_only',
+      team_id: 0,
+      resolution_error: 'Team access denied',
+    },
+  })
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Team access denied'
+  )
+  expect(screen.queryByText('Matched team: Research')).not.toBeInTheDocument()
+  const source = screen.getByRole('combobox', {
+    name: 'Funding source: production',
+  })
+  expect(
+    within(source).getByRole('option', { name: 'Team only' })
+  ).toBeDisabled()
 })
 
 it('combines creation and last use while keeping expiry, models and IP restrictions separate', async () => {

@@ -130,6 +130,62 @@ const team = {
   daily_limit: null,
   weekly_limit: 0,
 }
+
+test('a multi-team user switches teams and keeps each teams management permissions separate', async () => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 2, username: 'multi-team', role: 1 })
+  const rows = [
+    { ...team, id: 7, name: 'Research', role: 'admin' },
+    { ...team, id: 9, name: 'Testing', role: 'member' },
+  ]
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    let data: unknown = []
+    if (url === '/api/teams') data = rows
+    else if (url === '/api/teams/7' || url === '/api/teams/9') {
+      const selected = rows.find((row) => url.endsWith(`/${row.id}`))
+      if (!selected) throw new Error('Unexpected fixture team')
+      data = { team: selected, role: selected.role, budget }
+    } else if (url.includes('/overview')) {
+      data = {
+        scope: url.includes('/7/') ? 'team' : 'mine',
+        summary: {
+          requests: 0,
+          actual: 0,
+          reserved: 0,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          settled_requests: 0,
+          reserved_requests: 0,
+          refunded_requests: 0,
+        },
+        trend: [],
+        models: [],
+      }
+    } else if (url.includes('/usage?')) data = { items: [], total: 0 }
+    return { data: { success: true, data } }
+  })
+  render(
+    <QueryClientProvider client={client()}>
+      <Teams />
+    </QueryClientProvider>
+  )
+  const selector = await screen.findByRole('combobox', { name: 'Current team' })
+  expect(selector).toHaveValue('7')
+  expect(await screen.findByRole('heading', { name: 'Research' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Team settings' })).toBeVisible()
+  await userEvent.selectOptions(selector, '9')
+  expect(await screen.findByRole('heading', { name: 'Testing' })).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Team settings' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'All teams' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Multiple team memberships found')
+  ).not.toBeInTheDocument()
+})
 const budget = {
   daily_used: 0,
   daily_reserved: 0,

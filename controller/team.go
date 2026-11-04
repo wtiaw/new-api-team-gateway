@@ -17,7 +17,7 @@ import (
 func teamAPIResult(c *gin.Context, data any, err error, action string) {
 	if err != nil {
 		key := "Team operation failed"
-		for _, known := range []error{model.ErrTeamAccess, model.ErrTeamInput, model.ErrTeamInvitation, model.ErrTeamOperation, model.ErrTeamMembership, model.ErrTeamPersonalBackupDisabled} {
+		for _, known := range []error{model.ErrTeamAccess, model.ErrTeamInput, model.ErrTeamInvitation, model.ErrTeamOperation, model.ErrTeamGroupConflict, model.ErrTeamGroupRequired, model.ErrTeamPersonalBackupDisabled} {
 			if errors.Is(err, known) {
 				key = known.Error()
 				break

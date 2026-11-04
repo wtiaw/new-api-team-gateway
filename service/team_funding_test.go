@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -21,6 +22,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestTeamPolicyClientMessageFollowsRequestedLanguage(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	for _, language := range []string{"en", "zh-CN", "zh-TW"} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+		c.Request.Header.Set("Accept-Language", language)
+		for _, tc := range []struct {
+			err error
+			key string
+		}{{model.ErrTeamGroupRequired, i18n.MsgTeamGroupRequired}, {model.ErrTeamGroupConflict, i18n.MsgTeamGroupConflict}} {
+			message := TeamPolicyClientMessage(c, tc.err)
+			require.Equal(t, i18n.T(c, tc.key), message)
+			require.NotEqual(t, tc.key, message, "a missing locale must not leak a translation key")
+		}
+		require.Equal(t, model.ErrTeamAccess.Error(), TeamPolicyClientMessage(c, model.ErrTeamAccess))
+	}
+}
 
 func TestTeamRequestDefaultsReachUpstreamBody(t *testing.T) {
 	for _, tc := range []struct {
@@ -178,4 +197,67 @@ func TestTeamMembershipRequiredEvenForPersonalWallet(t *testing.T) {
 	assert.Empty(t, groups)
 	assert.Empty(t, GetAccountAutoGroups(c, user.Id, "default"))
 
+}
+
+func TestMultipleTeamsResolveFromKeyGroupForBothFundingSources(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	previous := model.DB
+	model.DB = db
+	t.Cleanup(func() { model.DB = previous })
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, model.MigrateTeams(db))
+	require.NoError(t, model.MigrateTeamFunding(db))
+	original := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"development":1,"testing":1.5,"default":1}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(original)) })
+	user := model.User{Username: "multi-team-member", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Quota: 1000000}
+	require.NoError(t, db.Create(&user).Error)
+	teams := []model.Team{
+		{Name: "Development", Status: 1, AllowPersonalBackup: true, AllowedGroups: []string{"development"}, DefaultGroup: "development"},
+		{Name: "Testing", Status: 1, AllowPersonalBackup: true, AllowedGroups: []string{"testing"}, DefaultGroup: "testing"},
+	}
+	for i := range teams {
+		require.NoError(t, db.Create(&teams[i]).Error)
+		require.NoError(t, db.Create(&model.TeamMember{UserID: user.Id, TeamID: teams[i].ID, Role: "member", Status: 1}).Error)
+	}
+	groups, err := GetAccountUsableGroups(user.Id, "default")
+	require.NoError(t, err)
+	assert.Len(t, groups, 2)
+	assert.Contains(t, groups, "development")
+	assert.Contains(t, groups, "testing")
+	assert.NotContains(t, groups, "default")
+	assert.NotContains(t, groups, "auto")
+	key := model.Token{UserId: user.Id, Key: "multi-team-fixture", Group: "development", Status: common.TokenStatusEnabled, UnlimitedQuota: true}
+	require.NoError(t, db.Create(&key).Error)
+	for i, group := range []string{"development", "testing"} {
+		require.NoError(t, db.Model(&key).Update("group", group).Error)
+		for _, mode := range []string{"team_first", "personal_only"} {
+			require.NoError(t, model.SetTeamKeyPolicy(key.Id, user.Id, model.TeamKeyPolicy{Mode: mode}))
+			policy, err := model.GetTeamKeyPolicy(key.Id, user.Id)
+			require.NoError(t, err)
+			assert.Equal(t, teams[i].ID, policy.TeamID, "the selected group determines the team even for personal payment")
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+			require.NoError(t, ValidateTeamTokenPolicy(c, key.Id, user.Id))
+			assert.Equal(t, group, common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+			assert.Equal(t, teams[i].ID, c.GetInt("resource_team_id"))
+		}
+	}
+	// Stale saved policy metadata must not pin a key after its group changes.
+	require.NoError(t, db.Model(&key).Update("group", "development").Error)
+	policy, err := model.GetTeamKeyPolicy(key.Id, user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, teams[0].ID, policy.TeamID)
+	require.Error(t, model.SetTeamKeyPolicy(key.Id, user.Id, model.TeamKeyPolicy{Mode: "team_only", TeamID: teams[1].ID}), "client IDs cannot charge another team's wallet")
+	_, err = ResolveAccountGroup(user.Id, 0, "default", "")
+	require.Error(t, err, "multiple teams require an actual selected group")
+	require.NoError(t, db.Model(&model.TeamMember{}).Where("team_id = ? AND user_id = ?", teams[0].ID, user.Id).Update("status", 2).Error)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	require.Error(t, ValidateTeamTokenPolicy(c, key.Id, user.Id), "personal balance must not bypass suspended membership")
+	groups, err = GetAccountUsableGroups(user.Id, "default")
+	require.NoError(t, err)
+	assert.Len(t, groups, 1)
+	assert.Contains(t, groups, "testing")
 }

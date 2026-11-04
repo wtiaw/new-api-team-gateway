@@ -1195,10 +1195,6 @@ func ManageUser(c *gin.Context) {
 			}
 			return authz.ClearUserAuthorizationInTx(tx, user.Id)
 		}); err != nil {
-			if errors.Is(err, model.ErrTeamDemotion) {
-				common.ApiErrorT(c, model.ErrTeamDemotion.Error())
-				return
-			}
 			common.ApiError(c, err)
 			return
 		}

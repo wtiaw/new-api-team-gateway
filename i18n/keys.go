@@ -12,6 +12,8 @@ const (
 	MsgTokenInvalid           = "token.invalid"
 	MsgTokenNotProvided       = "token.not_provided"
 	MsgTokenStatusUnavailable = "token.status_unavailable"
+	MsgTeamGroupRequired      = "team.group_required"
+	MsgTeamGroupConflict      = "team.group_conflict"
 
 	MsgAuthClientIPUnresolved     = "auth.client_ip_unresolved"
 	MsgAuthTokenIPNotAllowed      = "auth.token_ip_not_allowed"

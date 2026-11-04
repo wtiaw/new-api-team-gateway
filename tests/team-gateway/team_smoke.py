@@ -54,6 +54,17 @@ def settled_balance(client, path, expected):
         time.sleep(.05)
 
 
+def settled_consume_logs(client, count):
+    # Wallet settlement and insertion into the separate log DB can finish in
+    # different goroutines. Observe both before asserting reconciliation.
+    deadline = time.monotonic() + 10
+    while True:
+        rows = client.api("GET", "/api/log/self?type=2&p=1&page_size=100")["items"]
+        if len(rows) >= count or time.monotonic() >= deadline:
+            return rows
+        time.sleep(.05)
+
+
 def wait_ready(base):
     deadline = time.monotonic() + 180
     while True:
@@ -143,10 +154,28 @@ def user(admin, name):
 
 
 def token(client, name, **extra):
-    client.api("POST", "/api/token/", {"name": name, "expired_time": -1, "remain_quota": 100000, "unlimited_quota": False, "model_limits_enabled": True, "model_limits": MODEL, "group": "default", **extra})
+    client.api("POST", "/api/token/", {"name": name, "expired_time": -1, "remain_quota": 100000, "unlimited_quota": False, "model_limits_enabled": True, "model_limits": MODEL, "group": getattr(client, "fixture_group", "default"), **extra})
     item = next(x for x in client.api("GET", "/api/token/?p=1&page_size=100")["items"] if x["name"] == name)
     secret = client.api("POST", "/api/token/" + str(item["id"]) + "/key")["key"]
     return item, "sk-" + secret
+
+
+def resource_group(admin, name, ratio=1):
+    """Give independent teams distinct grants, backed only by the mock fixture."""
+    options = {row["key"]: row["value"] for row in admin.api("GET", "/api/option/")}
+    groups = json.loads(options.get("GroupRatio") or "{}")
+    groups.update(json.loads(options.get("group_ratio_setting.group_ratio") or "{}"))
+    groups[name] = ratio
+    for key in ("GroupRatio", "group_ratio_setting.group_ratio"):
+        admin.api("PUT", "/api/option/", {"key": key, "value": json.dumps(groups)})
+    for kind, model in ((1, MODEL), (43, DEEPSEEK_MODEL)):
+        admin.api("POST", "/api/channel/", {"mode": "single", "channel": {
+            "type": kind, "name": "Isolated " + name + " " + str(kind),
+            "key": "isolated-acceptance-upstream-key", "base_url": "http://mock-upstream:8080",
+            "models": model, "model_mapping": json.dumps({model: MODEL}), "group": name, "status": 1}})
+    # Native channel routing refreshes on SYNC_FREQUENCY=1 in this fixture.
+    # Direct Responses calls below do not use relay()'s distributor retry loop.
+    time.sleep(1.2)
 
 
 def relay(client, bearer, **extra):
@@ -174,7 +203,7 @@ def seed(admin):
     require(status == 200 and result["usage"]["total_tokens"] == 20, "legacy fixture relay")
     require(settled_quota(member, 1000000 - 14) == 1000000 - 14, "legacy 14 quota billing")
     info = member.api("GET", "/api/user/self")
-    logs = member.api("GET", "/api/log/self?type=2&p=1&page_size=100")["items"]
+    logs = settled_consume_logs(member, 1)
     require(len(logs) == 1 and logs[0]["quota"] == 14, "legacy consume log")
     return {"user_id": info["id"], "quota": info["quota"], "key_id": item["id"], "log_id": logs[0]["id"], "client": member, "bearer": bearer}
 
@@ -204,9 +233,13 @@ def team_smoke(admin, expire):
     require(member.api("GET", "/api/user/self")["quota"] == 0, "new user has zero personal quota")
     require(member.api("GET", "/api/user/self/groups") == {}, "a user without a team has no groups")
     member.denied("POST", "/api/token/", {"name":"unassigned-denied", "group":"default", "expired_time":-1, "unlimited_quota":True})
-    team = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name": "Acceptance A", "admin_user_id": manager_info["id"], "daily_limit": None, "weekly_limit": None})
+    resource_group(admin, "main")
+    resource_group(admin, "other")
+    manager.fixture_group = member.fixture_group = "main"
+    other.fixture_group = "other"
+    team = admin.api("POST", "/api/teams", {"allowed_groups":["main"], "default_group":"main", "name": "Acceptance A", "admin_user_id": manager_info["id"], "daily_limit": None, "weekly_limit": None})
     require(team["allow_personal_backup"] is True, "new team allows personal backup by explicit server default")
-    team2 = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name": "Acceptance B", "admin_user_id": other_info["id"]})
+    team2 = admin.api("POST", "/api/teams", {"allowed_groups":["other"], "default_group":"other", "name": "Acceptance B", "admin_user_id": other_info["id"]})
     path = "/api/teams/" + str(team["id"])
     foreign = "/api/teams/" + str(team2["id"])
     manager.denied("POST", "/api/teams", {"name": "forbidden"})
@@ -258,8 +291,8 @@ def team_smoke(admin, expire):
     require(manager.api("GET", path)["team"]["balance"] == 1000000, "system directly credits team wallet")
     member_detail = member.api("GET", path)
     member_list = next(row for row in member.api("GET", "/api/teams") if row["id"] == team["id"])
-    require(member_detail["team"]["allowed_groups"] == ["default"] and member_detail["team"]["default_group"] == "default", "member detail projects resource grants")
-    require(member_list["allowed_groups"] == ["default"] and member_list["default_group"] == "default", "member list projects resource grants")
+    require(member_detail["team"]["allowed_groups"] == ["main"] and member_detail["team"]["default_group"] == "main", "member detail projects resource grants")
+    require(member_list["allowed_groups"] == ["main"] and member_list["default_group"] == "main", "member list projects resource grants")
     require("balance" not in member_detail["team"] and "budget" not in member_detail and "balance" not in member_list, "member list and detail APIs exclude shared wallet and global consumption")
     require(manager.api("GET", "/api/user/self")["role"] == 1, "team manager remains native ordinary user")
     effective = member.api("GET", policy)
@@ -279,7 +312,7 @@ def team_smoke(admin, expire):
     admin.api("PUT", "/api/option/", {"key": "billing_setting.billing_expr", "value": json.dumps({MODEL: 'len <= 272000 ? tier("short", p * 1 + cr * 0.1 + cc * 1.25 + cc12h * 2.5 + c * 2) : tier("long", p * 2 + cr * 0.2 + cc * 2.5 + cc12h * 5 + c * 4)'})})
     admin.api("PUT", "/api/option/", {"key": "billing_setting.billing_mode", "value": json.dumps({MODEL: "tiered_expr"})})
     for streaming in (False, True):
-        pg_body = {"model": MODEL, "group": "default", "messages": [{"role": "user", "content": "playground acceptance"}], "stream": streaming, "stream_options": {"include_usage": True}}
+        pg_body = {"model": MODEL, "group": "main", "messages": [{"role": "user", "content": "playground acceptance"}], "stream": streaming, "stream_options": {"include_usage": True}}
         if streaming:
             pg_body.update({"tools":chat_tools,"messages":[*chat_messages,{"role":"assistant","content":None,"tool_calls":[{"id":"call_chat","type":"function","function":{"name":"read_file","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_chat","content":"fixture text"}],"response_format":{"type":"json_object"}})
         pg_status, pg_result = member.request("POST", "/pg/chat/completions", pg_body)
@@ -302,7 +335,7 @@ def team_smoke(admin, expire):
     require(member.api("GET", "/api/user/self")["quota"] == 0, "DSH team calls preserve the empty personal wallet")
     # Keep expression pricing active while denying a fully exhausted team budget.
     manager.api("PUT", path, {"daily_limit": 0, "weekly_limit": 2000000})
-    denied_status, denied_result = member.request("POST", "/pg/chat/completions", {"model": MODEL, "group": "default", "messages": [{"role": "user", "content": "denied at daily cap"}], "stream": False})
+    denied_status, denied_result = member.request("POST", "/pg/chat/completions", {"model": MODEL, "group": "main", "messages": [{"role": "user", "content": "denied at daily cap"}], "stream": False})
     require(denied_status == 403, "expression-priced playground preserves the hard daily limit with no personal balance")
     require(member.request("POST","/v1/responses",dsh_body,bearer)[0] == 403, "DSH request cannot exceed the exhausted team daily limit")
     require(manager.api("GET", path)["team"]["balance"] == 1000000 - 70, "rejected expression request leaves team wallet unchanged")
@@ -417,7 +450,9 @@ def team_smoke(admin, expire):
 def per_member_allowance_smoke(admin):
     manager, info_a = user(admin, "allowance-a")
     member, info_b = user(admin, "allowance-b")
-    team = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name":"Per-member allowance", "admin_user_id":info_a["id"], "daily_limit":14, "weekly_limit":28})
+    resource_group(admin, "allow")
+    manager.fixture_group = member.fixture_group = "allow"
+    team = admin.api("POST", "/api/teams", {"allowed_groups":["allow"], "default_group":"allow", "name":"Per-member allowance", "admin_user_id":info_a["id"], "daily_limit":14, "weekly_limit":28})
     path = "/api/teams/" + str(team["id"])
     invitation = manager.api("POST", path + "/invitations", {"valid_days":7})
     member.api("POST", "/api/team-invitations/" + invitation["token"] + "/accept")
@@ -455,7 +490,9 @@ def per_member_allowance_smoke(admin):
 
 def postpaid_smoke(admin):
     member, info = user(admin, "postpaid")
-    team = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name": "Postpaid acceptance", "admin_user_id": info["id"], "daily_limit": 5, "weekly_limit": 5})
+    resource_group(admin, "post")
+    member.fixture_group = "post"
+    team = admin.api("POST", "/api/teams", {"allowed_groups":["post"], "default_group":"post", "name": "Postpaid acceptance", "admin_user_id": info["id"], "daily_limit": 5, "weekly_limit": 5})
     path = "/api/teams/" + str(team["id"])
     admin.api("POST", path + "/quota", {"mode": "add", "value": 5, "reason": "postpaid fixture", "operation_id": "postpaid-fund"})
     key, bearer = token(member, "Codex postpaid")
@@ -488,6 +525,8 @@ def postpaid_smoke(admin):
 
 def channel_pricing_smoke(admin):
     member, info = user(admin, "pricing-member")
+    resource_group(admin, "price")
+    member.fixture_group = "price"
     models = ["pricing-a", "pricing-b", "pricing-c"]
     ratios = dict(json.loads(next(x["value"] for x in admin.api("GET", "/api/option/") if x["key"] == "ModelRatio")))
     completions = dict(json.loads(next(x["value"] for x in admin.api("GET", "/api/option/") if x["key"] == "CompletionRatio")))
@@ -500,11 +539,11 @@ def channel_pricing_smoke(admin):
     options=admin.api("GET", "/api/option/")
     original_group=next((x["value"] for x in options if x["key"]==group_key), '{"default":1}')
     groups=json.loads(original_group)
-    groups["default"]=1
+    groups["price"]=1
     admin.api("PUT", "/api/option/", {"key":group_key,"value":json.dumps(groups)})
     for name,factor in zip(models,(0.3,0.5,1)):
-        admin.api("POST", "/api/channel/", {"mode":"single","channel":{"type":1,"name":name,"key":"isolated-acceptance-upstream-key","base_url":"http://mock-upstream:8080","models":name,"model_mapping":json.dumps({name:MODEL}),"group":"default","status":1,"setting":json.dumps({"sales_multiplier":factor})}})
-    team=admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name":"Pricing acceptance","admin_user_id":info["id"],"daily_limit":1000000,"weekly_limit":2000000})
+        admin.api("POST", "/api/channel/", {"mode":"single","channel":{"type":1,"name":name,"key":"isolated-acceptance-upstream-key","base_url":"http://mock-upstream:8080","models":name,"model_mapping":json.dumps({name:MODEL}),"group":"price","status":1,"setting":json.dumps({"sales_multiplier":factor})}})
+    team=admin.api("POST", "/api/teams", {"allowed_groups":["price"], "default_group":"price", "name":"Pricing acceptance","admin_user_id":info["id"],"daily_limit":1000000,"weekly_limit":2000000})
     path="/api/teams/"+str(team["id"])
     admin.api("POST",path+"/quota",{"mode":"add","value":1000000,"reason":"isolated pricing fixture","operation_id":"pricing-fixture"})
     key,bearer=token(member,"pricing",model_limits=",".join(models))
@@ -516,12 +555,12 @@ def channel_pricing_smoke(admin):
         balance-=expected
         require(settled_balance(member,path,balance)==balance,"channel factor actually affects team charge: "+name)
     # Existing group controls multiply the channel price rather than replace it.
-    groups["default"]=0.5
+    groups["price"]=0.5
     admin.api("PUT","/api/option/",{"key":group_key,"value":json.dumps(groups)})
     require(relay(member,bearer,model=models[0])[0]==200,"group and channel combined relay")
     balance-=21
     require(settled_balance(member,path,balance)==balance,"0.3 channel x 0.5 group charges 0.15x")
-    logs=member.api("GET","/api/log/self?type=2&p=1&page_size=100")["items"]
+    logs=settled_consume_logs(member,4)
     matching=[row for row in logs if row["model_name"]==models[0] and row["quota"]==21]
     require(len(matching)==1,"native consume log uses final multiplied charge")
     factors=json.loads(matching[0]["other"])
@@ -573,7 +612,7 @@ def shared_team_group_smoke(admin):
         require(settled_balance(member,path,86) == 86, "shared group team charge")
         require(relay(member,bearer)[0] == 200, "same key automatically uses personal funds on same group")
         require(settled_quota(member,1000000-14) == 1000000-14, "personal wallet charged without team cap")
-        logs=member.api("GET","/api/log/self?type=2&p=1&page_size=100")["items"]
+        logs=settled_consume_logs(member,2)
         sources={json.loads(row["other"])["billing_source"] for row in logs}
         require(sources == {"team","wallet"} and all(row["group"]==development for row in logs), "actual log source changes while selected group stays identical")
         ledger=member.api("GET",path+"/usage?page=1&page_size=100")["items"]
@@ -592,6 +631,7 @@ def shared_team_group_smoke(admin):
         member.api("PUT","/api/team-key-policies/"+str(boot_key["id"]),{"mode":"personal_only"})
         require(relay(member,boot_bearer)[0] == 200, "boot group uses same channel at its own price")
         require(settled_quota(member,1000000-56) == 1000000-56, "boot personal charge uses 1.5x group price")
+        settled_consume_logs(member,4)
         all_logs=admin.api("GET","/api/log/?type=2&p=1&page_size=100")["items"]
         scoped=[row for row in all_logs if row["user_id"]==info["id"]]
         require(len(scoped)==4 and len({row["channel"] for row in scoped})==1, "all payment sources and all groups share one actual channel")
@@ -605,6 +645,63 @@ def shared_team_group_smoke(admin):
         return ["shared team grants for both payment sources", "no named default implicit grant", "no-team empty scope", "single-key source switch preserves group", "revocation and actual route snapshots"]
     finally:
         admin.api("PUT", "/api/option/", {"key":group_key,"value":original})
+
+
+def multi_team_group_smoke(admin):
+    resource_group(admin, "multi-a")
+    resource_group(admin, "multi-b", 1.5)
+    manager_a, info_a = user(admin, "multi-manager-a")
+    manager_b, info_b = user(admin, "multi-manager-b")
+    member, info = user(admin, "multi-member")
+    teams = []
+    for group, manager, manager_info, cap in (("multi-a", manager_a, info_a, 14), ("multi-b", manager_b, info_b, 21)):
+        team = admin.api("POST", "/api/teams", {"name": group, "admin_user_id": manager_info["id"],
+            "allowed_groups": [group], "default_group": group, "daily_limit": cap, "weekly_limit": cap})
+        path = "/api/teams/" + str(team["id"])
+        invite = manager.api("POST", path + "/invitations", {"valid_days": 7})
+        member.api("POST", "/api/team-invitations/" + invite["token"] + "/accept")
+        admin.api("POST", path + "/quota", {"mode": "add", "value": 200,
+            "reason": "isolated multi-team fixture", "operation_id": "fund-" + group})
+        teams.append((team, path))
+    (team_a, path_a), (team_b, path_b) = teams
+    require(len(member.api("GET", "/api/teams")) == 2, "one user joins two teams")
+    grants = member.api("GET", "/api/user/self/groups")
+    require(set(grants) == {"multi-a", "multi-b"} and grants["multi-a"]["team_id"] == team_a["id"] and grants["multi-b"]["team_id"] == team_b["id"], "union identifies exactly one owner per group")
+    manager_a.denied("GET", path_b + "/usage")
+    member.denied("POST", path_b + "/invitations", {"valid_days": 1})
+    admin.denied("POST", "/api/teams", {"name": "duplicate-owner", "admin_user_id": info_a["id"], "allowed_groups": ["multi-a"], "default_group": "multi-a"})
+    require(len(member.api("GET", "/api/teams")) == 2, "rejected ownership cannot mutate existing memberships")
+    admin.api("POST", "/api/user/manage", {"id": info["id"], "action": "add_quota", "mode": "add", "value": 1000000})
+    key, bearer = token(member, "multi-same-key", group="multi-a")
+    policy = "/api/team-key-policies/" + str(key["id"])
+    require(member.api("GET", policy)["team_id"] == team_a["id"], "selected A group defaults to A team funding")
+    require(relay(member, bearer)[0] == 200 and settled_balance(manager_a, path_a, 186) == 186, "A wallet pays its own first request")
+    require(relay(member, bearer)[0] == 200 and settled_quota(member, 1000000-14) == 1000000-14, "exhausted A falls back to personal rather than B")
+    require(manager_b.api("GET", path_b)["team"]["balance"] == 200, "B balance stays independent from A fallback")
+    member.api("PUT", policy, {"mode": "team_first", "team_id": team_a["id"]})
+    # Save ordinary editable metadata; never send the masked key back to update.
+    update = {name: key[name] for name in ("id", "name", "expired_time", "remain_quota", "unlimited_quota", "model_limits_enabled", "model_limits")}
+    member.api("PUT", "/api/token/", {**update, "group": "multi-b"})
+    derived = member.api("GET", policy)
+    require(derived["team_id"] == team_b["id"] and derived["resource_group"] == "multi-b", "group edit overrides the old saved team snapshot without rotating key")
+    require(relay(member, bearer)[0] == 200 and settled_balance(manager_b, path_b, 179) == 179, "same bearer routes B and charges its own 1.5x price")
+    require(relay(member, bearer)[0] == 200 and settled_quota(member, 1000000-35) == 1000000-35, "B cap falls back to personal at the same group price")
+    member.denied("PUT", policy, {"mode": "team_only", "team_id": team_a["id"]})
+    member.denied("PUT", "/api/token/", {**update, "group": "main"})
+    member.api("PUT", policy, {"mode": "personal_only"})
+    require(relay(member, bearer)[0] == 200 and settled_quota(member, 1000000-56) == 1000000-56, "personal mode retains B authorization and bypasses only team spending caps")
+    member.api("PUT", "/api/token/", {**update, "group": "multi-a"})
+    manager_a.api("DELETE", path_a + "/members/" + str(info["id"]))
+    require(relay(member, bearer)[0] == 403, "removed A membership blocks the old personal-only A key immediately")
+    require(set(member.api("GET", "/api/user/self/groups")) == {"multi-b"}, "removal affects only that team's grants")
+    member.api("PUT", "/api/token/", {**update, "group": "multi-b"})
+    require(relay(member, bearer)[0] == 200 and settled_quota(member, 1000000-77) == 1000000-77, "remaining B membership works with the original key")
+    for manager, path, expected in ((manager_a, path_a, 14), (manager_b, path_b, 21)):
+        rows = manager.api("GET", path + "/usage?page=1&page_size=100")["items"]
+        require(sum(row["actual"] for row in rows if row["state"] == "settled") == expected, "team ledgers exclude other-team and personal spending")
+        scoped = manager.api("GET", path + "/overview?user_id=" + str(info["id"]))
+        require(scoped["period_usage"]["daily_used"] == expected and scoped["period_usage"]["weekly_used"] == expected, "member daily and weekly usage is team-specific")
+    return ["multiple memberships", "exclusive group ownership", "same bearer group-based team matching", "independent member caps and wallets", "personal fallback never spends another team", "per-team revocation"]
 
 
 def matrix(args):
@@ -629,7 +726,7 @@ def matrix(args):
             case.mkdir()
             compose = ["docker", "compose", "--env-file", "NUL", "-p", project, "-f", str(ROOT / "deploy/team-gateway/compose.test.yaml")]
             password = "Aa1!" + secrets.token_hex(16)
-            env.update(TEST_SQL_DSN="", TEST_LOG_SQL_DSN="", TEST_APP_IMAGE=OLD_IMAGE if scenario == "upgrade" else runtime_image)
+            env.update(TEST_SQL_DSN="", TEST_LOG_SQL_DSN="", TEST_APP_IMAGE=args.old_image if scenario == "upgrade" else runtime_image)
             try:
                 services = ["redis", "mock-upstream"] + ([engine] if engine != "sqlite" else [])
                 command(compose + ["up", "-d", "--wait", "--wait-timeout", "240"] + services, env, case, "infra")
@@ -701,6 +798,7 @@ def matrix(args):
                 per_member_allowance_smoke(admin)
                 postpaid_smoke(admin)
                 pricing_snapshot = channel_pricing_smoke(admin)
+                multi_checks = multi_team_group_smoke(admin)
                 group_checks = shared_team_group_smoke(admin)
                 team_indexes = indexes("with-team-data")
                 command(compose + ["up", "-d", "--force-recreate", "--no-deps", "app"], env, case, "restart-with-team-data")
@@ -716,7 +814,7 @@ def matrix(args):
                 require(len(admin.api("GET", team_path + "/usage")) == team_snapshot["usage_count"], "restart preserves funding snapshots")
                 require(admin.api("GET", "/api/user/" + str(team_snapshot["member_id"]))["quota"] == team_snapshot["member_quota"], "restart preserves independent personal wallet")
                 require(team_indexes <= indexes("after-team-restart"), "restart preserves all team uniqueness definitions")
-                results.append({"engine": engine, "scenario": scenario, "success": True, "checks": team_snapshot["checks"] + group_checks + ["restart preserves team data and uniqueness"]})
+                results.append({"engine": engine, "scenario": scenario, "success": True, "checks": team_snapshot["checks"] + group_checks + multi_checks + ["restart preserves team data and uniqueness"]})
                 print(engine + " " + scenario + ": passed", flush=True)
             except Exception as error:
                 results.append({"engine": engine, "scenario": scenario, "success": False, "error": str(error)})
@@ -728,7 +826,7 @@ def matrix(args):
                     command(compose + ["down", "--volumes", "--remove-orphans"], env, case, "cleanup")
                 else:
                     print("Retained isolated project " + project, flush=True)
-            (evidence / "results.json").write_text(json.dumps({"application_image": args.image, "application_tag": runtime_image, "mysql_image": MYSQL_IMAGE, "old_image": OLD_IMAGE, "results": results}, indent=2), encoding="utf-8")
+            (evidence / "results.json").write_text(json.dumps({"application_image": args.image, "application_tag": runtime_image, "mysql_image": MYSQL_IMAGE, "old_image": args.old_image, "results": results}, indent=2), encoding="utf-8")
     print("Evidence: " + str(evidence))
     if not args.keep:
         tags = json.loads(command(["docker", "image", "inspect", runtime_image, "--format", "{{json .RepoTags}}"], env, evidence, "application-tags") or "[]")
@@ -745,6 +843,7 @@ if __name__ == "__main__":
     parser.add_argument("--engine", choices=["all", "sqlite", "mysql", "postgres"], default="all")
     parser.add_argument("--scenario", choices=["all", "fresh", "upgrade"], default="all")
     parser.add_argument("--image", default="new-api-team-gateway:local")
+    parser.add_argument("--old-image", default=OLD_IMAGE, help="Pinned previous release to upgrade from")
     parser.add_argument("--port", type=int, default=18330)
     parser.add_argument("--skip-model-tests", action="store_true")
     parser.add_argument("--keep", action="store_true")

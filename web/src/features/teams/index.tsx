@@ -22,9 +22,10 @@ import { useTranslation } from 'react-i18next'
 
 import { StaticDataTable } from '@/components/data-table'
 import { EmptyState } from '@/components/empty-state'
-import { ErrorState } from '@/components/error-state'
 import { Main } from '@/components/layout'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -63,17 +64,10 @@ export function Teams() {
           const systemView =
             rows.some((row) => row.role === 'system') ||
             (system && rows.length === 0)
-          const detailId = systemView ? selectedId : rows[0]?.id
-          if (!systemView && rows.length > 1) {
-            return (
-              <ErrorState
-                title={t('Multiple team memberships found')}
-                description={t(
-                  'Ask a system administrator to keep one active team membership.'
-                )}
-              />
-            )
-          }
+          const memberSelection = rows.some((row) => row.id === selectedId)
+            ? selectedId
+            : (rows.find((row) => row.status === 1)?.id ?? rows[0]?.id)
+          const detailId = systemView ? selectedId : memberSelection
           if (!systemView && rows.length === 0) {
             return (
               <EmptyState
@@ -86,12 +80,32 @@ export function Teams() {
             )
           }
           return detailId && rows.some((row) => row.id === detailId) ? (
-            <TeamDetailView
-              key={detailId}
-              teamId={detailId}
-              system={systemView}
-              onBack={systemView ? () => setSelectedId(null) : undefined}
-            />
+            <div className='space-y-4'>
+              {!systemView && rows.length > 1 && (
+                <div className='max-w-sm space-y-2'>
+                  <Label htmlFor='current-team'>{t('Current team')}</Label>
+                  <NativeSelect
+                    id='current-team'
+                    value={detailId}
+                    onChange={(event) =>
+                      setSelectedId(Number(event.target.value))
+                    }
+                  >
+                    {rows.map((row) => (
+                      <NativeSelectOption key={row.id} value={row.id}>
+                        {row.name}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
+              <TeamDetailView
+                key={detailId}
+                teamId={detailId}
+                system={systemView}
+                onBack={systemView ? () => setSelectedId(null) : undefined}
+              />
+            </div>
           ) : (
             <StaticDataTable
               data={rows}

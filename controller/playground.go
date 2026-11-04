@@ -55,7 +55,7 @@ func Playground(c *gin.Context) {
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 	if err := service.ValidatePlaygroundTeamPolicy(c, userId); err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+		newAPIError = types.NewError(errors.New(service.TeamPolicyClientMessage(c, err)), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
 		return
 	}
 

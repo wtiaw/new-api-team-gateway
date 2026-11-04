@@ -7548,6 +7548,12 @@
     "No groups granted. Members cannot call models until groups are assigned.": "Chưa cấp nhóm. Thành viên chưa thể gọi mô hình cho đến khi được cấp nhóm.",
     "The default selection must be an allowed group, such as Development. It does not create a group named default.": "Chọn một nhóm được phép, ví dụ Phát triển. Không tạo nhóm tên default.",
     "Failed to load groups": "Không tải được danh sách nhóm",
-    "Follow default selection": "Theo lựa chọn mặc định"
+    "Follow default selection": "Theo lựa chọn mặc định",
+    "Current team": "Nhóm hiện tại",
+    "Matched team: {{team}}": "Nhóm tương ứng: {{team}}",
+    "The selected group determines the team. Changing payment preference does not change group access.": "Nhóm tài nguyên đã chọn xác định nhóm phụ trách. Đổi cách thanh toán không thay đổi quyền truy cập nhóm tài nguyên.",
+    "A resource group can only belong to one team": "Một nhóm tài nguyên chỉ có thể thuộc về một nhóm phụ trách.",
+    "Select a resource group to match a team": "Chọn nhóm tài nguyên để xác định nhóm phụ trách.",
+    "Each resource group belongs to one team. Users can join multiple teams.": "Mỗi nhóm tài nguyên thuộc về một nhóm phụ trách. Người dùng có thể tham gia nhiều nhóm."
   }
 }

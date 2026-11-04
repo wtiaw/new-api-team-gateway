@@ -202,7 +202,7 @@ func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T)
 	assert.Equal(t, 1, sessionUpdateCount)
 }
 
-func TestManageUserDemoteRejectsMultipleTeamMemberships(t *testing.T) {
+func TestManageUserDemotePreservesMultipleMembershipsAndRevokesOldSession(t *testing.T) {
 	db := setupManageUserTestDB(t)
 	require.NoError(t, model.MigrateTeams(db))
 	previousMaster := common.IsMasterNode
@@ -224,23 +224,22 @@ func TestManageUserDemoteRejectsMultipleTeamMemberships(t *testing.T) {
 		MessageKey string `json:"message_key"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	require.False(t, response.Success, recorder.Body.String())
-	require.Equal(t, "Remove extra team memberships before demoting this administrator", response.MessageKey)
+	require.True(t, response.Success, recorder.Body.String())
 	var stored model.User
 	require.NoError(t, db.First(&stored, user.Id).Error)
-	require.Equal(t, common.RoleAdminUser, stored.Role)
-	require.EqualValues(t, 1, stored.AuthVersion)
+	require.Equal(t, common.RoleCommonUser, stored.Role)
+	require.Greater(t, stored.AuthVersion, int64(1))
 	require.Equal(t, 777, stored.Quota)
 	var session model.UserSession
 	require.NoError(t, db.First(&session, "sid = ?", "multi-team-admin-session").Error)
-	require.Equal(t, model.UserSessionStatusActive, session.Status)
+	require.Equal(t, model.UserSessionStatusRevoked, session.Status)
 	var count int64
 	require.NoError(t, db.Model(&model.TeamMember{}).Where("user_id = ? AND status = ?", user.Id, 1).Count(&count).Error)
 	require.EqualValues(t, 2, count)
 	// Partial profile and status updates do not request a role change.
 	partial := model.User{Id: user.Id, DisplayName: "Retained administrator", Status: common.UserStatusDisabled}
 	require.NoError(t, db.Transaction(func(tx *gorm.DB) error { return partial.UpdateWithTx(tx, false) }))
-	require.Equal(t, common.RoleAdminUser, partial.Role)
+	require.Equal(t, common.RoleCommonUser, partial.Role)
 }
 
 func TestTeamDemotionConcurrentMembershipUpdate(t *testing.T) {
@@ -291,19 +290,16 @@ func TestTeamDemotionConcurrentMembershipUpdate(t *testing.T) {
 				if err == nil {
 					successes++
 				} else {
-					require.True(t, errors.Is(err, model.ErrTeamMembership) || errors.Is(err, model.ErrTeamDemotion), err)
+					require.NoError(t, err)
 				}
 			}
-			require.Equal(t, 1, successes)
+			require.Equal(t, 2, successes)
 			var stored model.User
 			require.NoError(t, db.First(&stored, user.Id).Error)
 			var count int64
 			require.NoError(t, db.Model(&model.TeamMember{}).Where("user_id = ? AND status = ?", user.Id, 1).Count(&count).Error)
-			if stored.Role < common.RoleAdminUser {
-				require.EqualValues(t, 1, count)
-			} else {
-				require.EqualValues(t, 2, count)
-			}
+			require.Equal(t, common.RoleCommonUser, stored.Role)
+			require.EqualValues(t, 2, count)
 		})
 	}
 }

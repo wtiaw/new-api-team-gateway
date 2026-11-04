@@ -7548,6 +7548,12 @@
     "No groups granted. Members cannot call models until groups are assigned.": "Группы не назначены. До назначения участники не могут вызывать модели.",
     "The default selection must be an allowed group, such as Development. It does not create a group named default.": "Выберите разрешённую группу, например «Разработка». Группа с именем default не создаётся.",
     "Failed to load groups": "Не удалось загрузить группы",
-    "Follow default selection": "Использовать выбор по умолчанию"
+    "Follow default selection": "Использовать выбор по умолчанию",
+    "Current team": "Текущая команда",
+    "Matched team: {{team}}": "Команда группы: {{team}}",
+    "The selected group determines the team. Changing payment preference does not change group access.": "Выбранная группа определяет команду. Способ оплаты не меняет права доступа к группе.",
+    "A resource group can only belong to one team": "Группа ресурсов может принадлежать только одной команде.",
+    "Select a resource group to match a team": "Выберите группу ресурсов, чтобы определить команду.",
+    "Each resource group belongs to one team. Users can join multiple teams.": "Каждая группа ресурсов принадлежит одной команде. Пользователь может вступить в несколько команд."
   }
 }

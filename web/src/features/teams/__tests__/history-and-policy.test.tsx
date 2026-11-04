@@ -277,7 +277,7 @@ test('a team that forbids personal backup disables automatic policies but keeps 
       <FundingPolicyDialog tokenId={3} open onOpenChange={() => {}} />
     </QueryClientProvider>
   )
-  await screen.findByRole('option', { name: 'Restricted' })
+  await screen.findByText('Matched team: Restricted')
   expect(
     screen.getByRole('option', { name: 'Team first, personal backup' })
   ).toBeDisabled()

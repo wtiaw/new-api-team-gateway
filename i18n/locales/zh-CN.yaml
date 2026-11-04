@@ -2,6 +2,8 @@
 # 中文（简体）翻译文件
 
 # Errors returned to AI clients
+team.group_required: "请选择资源分组以确定所属团队"
+team.group_conflict: "一个资源分组只能归属一个团队"
 common.database_error: "数据库出错，请联系管理员"
 auth.user_banned: "用户已被封禁"
 token.get_info_failed: "获取令牌信息失败，请稍后重试"

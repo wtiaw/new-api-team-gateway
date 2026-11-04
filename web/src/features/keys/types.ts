@@ -58,6 +58,9 @@ export const apiKeySchema = z.object({
       ]),
       team_id: z.number(),
       is_default: z.boolean().optional(),
+      team_name: z.string().optional(),
+      resource_group: z.string().optional(),
+      resolution_error: z.string().optional(),
     })
     .nullish(),
 })

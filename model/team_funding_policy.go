@@ -4,37 +4,61 @@ import (
 	"errors"
 
 	"github.com/QuantumNous/new-api/common"
-	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type TeamKeyPolicy struct {
-	TokenID   int    `json:"token_id" gorm:"primaryKey;autoIncrement:false"`
-	UserID    int    `json:"user_id" gorm:"index"`
-	TeamID    int    `json:"team_id" gorm:"index"`
-	Mode      string `json:"mode" gorm:"type:varchar(32)"`
-	IsDefault bool   `json:"is_default" gorm:"-"`
+	TokenID         int    `json:"token_id" gorm:"primaryKey;autoIncrement:false"`
+	UserID          int    `json:"user_id" gorm:"index"`
+	TeamID          int    `json:"team_id" gorm:"index"`
+	Mode            string `json:"mode" gorm:"type:varchar(32)"`
+	IsDefault       bool   `json:"is_default" gorm:"-"`
+	TeamName        string `json:"team_name,omitempty" gorm:"-"`
+	ResourceGroup   string `json:"resource_group,omitempty" gorm:"-"`
+	ResolutionError string `json:"resolution_error,omitempty" gorm:"-"`
 }
 
 // DefaultTeamKeyPolicy follows an actual active membership, never the list of
 // teams a system administrator is merely allowed to manage.
 func DefaultTeamKeyPolicy(userID int) (*TeamKeyPolicy, error) {
-	policy := &TeamKeyPolicy{UserID: userID, Mode: "legacy", IsDefault: true}
-	var teams []Team
-	err := DB.Model(&Team{}).
-		Joins("JOIN team_members ON team_members.team_id = teams.id").
-		Where("team_members.user_id = ? AND team_members.status = ? AND teams.status = ?", userID, 1, 1).
-		Limit(2).Find(&teams).Error
+	return DefaultTeamKeyPolicyForGroup(userID, "")
+}
+
+func DefaultTeamKeyPolicyForGroup(userID int, group string) (*TeamKeyPolicy, error) {
+	teams, native, err := ActiveTeamGroupProfiles(userID)
 	if err != nil {
 		return nil, err
 	}
-	if len(teams) == 1 {
-		policy.TeamID, policy.Mode = teams[0].ID, "team_first"
-		if !teams[0].AllowPersonalBackup {
+	policy := projectTeamKeyPolicy(TeamKeyPolicy{UserID: userID, Mode: "legacy", IsDefault: true}, group, teams, native)
+	return &policy, nil
+}
+
+// Derive ownership for every read, including explicit personal-only policies.
+// An unresolvable row stays editable instead of failing the entire key listing.
+func projectTeamKeyPolicy(policy TeamKeyPolicy, group string, teams []Team, native bool) TeamKeyPolicy {
+	team, _, err := matchActiveTeamGroupProfile(teams, native, policy.TeamID, group)
+	policy.TeamID, policy.TeamName, policy.ResourceGroup, policy.ResolutionError = 0, "", "", ""
+	if err != nil {
+		policy.ResolutionError = err.Error()
+		return policy
+	}
+	if team == nil {
+		return policy
+	}
+	policy.TeamID, policy.TeamName, policy.ResourceGroup = team.ID, team.Name, group
+	if group == "" {
+		policy.ResourceGroup = team.DefaultGroup
+		if policy.ResourceGroup == "" && len(team.AllowedGroups) == 1 {
+			policy.ResourceGroup = team.AllowedGroups[0]
+		}
+	}
+	if policy.Mode == "legacy" {
+		policy.Mode = "team_first"
+		if !team.AllowPersonalBackup {
 			policy.Mode = "team_only"
 		}
 	}
-	return policy, nil
+	return policy
 }
 
 // GetTeamKeyPolicies batches list-page policies rather than querying each row.
@@ -57,19 +81,17 @@ func GetTeamKeyPolicies(tokens []*Token, userID int) (map[int]*TeamKeyPolicy, er
 	for i := range policies {
 		result[policies[i].TokenID] = &policies[i]
 	}
-	if len(result) == len(tokens) {
-		return result, nil
-	}
-	defaultPolicy, err := DefaultTeamKeyPolicy(userID)
+	teams, native, err := ActiveTeamGroupProfiles(userID)
 	if err != nil {
 		return nil, err
 	}
 	for _, token := range tokens {
-		if result[token.Id] == nil {
-			policy := *defaultPolicy
-			policy.TokenID = token.Id
-			result[token.Id] = &policy
+		policy := TeamKeyPolicy{TokenID: token.Id, UserID: userID, Mode: "legacy", IsDefault: true}
+		if stored := result[token.Id]; stored != nil {
+			policy = *stored
 		}
+		projected := projectTeamKeyPolicy(policy, token.Group, teams, native)
+		result[token.Id] = &projected
 	}
 	return result, nil
 }
@@ -79,17 +101,8 @@ func GetTeamKeyPolicy(tokenID, userID int) (*TeamKeyPolicy, error) {
 	if err := DB.Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
 		return nil, err
 	}
-	var policy TeamKeyPolicy
-	err := DB.First(&policy, "token_id = ? AND user_id = ?", tokenID, userID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		defaultPolicy, defaultErr := DefaultTeamKeyPolicy(userID)
-		if defaultErr != nil {
-			return nil, defaultErr
-		}
-		defaultPolicy.TokenID = tokenID
-		return defaultPolicy, nil
-	}
-	return &policy, err
+	policies, err := GetTeamKeyPolicies([]*Token{&token}, userID)
+	return policies[tokenID], err
 }
 
 func SetTeamKeyPolicy(tokenID, userID int, policy TeamKeyPolicy) error {
@@ -101,25 +114,26 @@ func SetTeamKeyPolicy(tokenID, userID int, policy TeamKeyPolicy) error {
 		return DB.Where("token_id = ? AND user_id = ?", tokenID, userID).Delete(&TeamKeyPolicy{}).Error
 	}
 	switch policy.Mode {
-	case "personal_only":
-		policy.TeamID = 0
-	case "team_only", "team_first", "personal_first":
-		var user User
-		if err := DB.First(&user, userID).Error; err != nil {
-			return err
+	case "personal_only", "team_only", "team_first", "personal_first":
+	default:
+		return ErrTeamFundingState
+	}
+	team, native, err := MatchTeamGroupProfile(userID, 0, token.Group)
+	if err != nil {
+		return err
+	}
+	if team == nil {
+		if !native || policy.Mode != "personal_only" || policy.TeamID != 0 {
+			return ErrTeamAccess
 		}
-		if err := RequireTeamAccess(policy.TeamID, userID, user.Role, false); err != nil {
-			return err
+	} else {
+		if policy.TeamID != 0 && policy.TeamID != team.ID {
+			return ErrTeamAccess
 		}
-		var team Team
-		if err := DB.First(&team, policy.TeamID).Error; err != nil {
-			return err
-		}
+		policy.TeamID = team.ID
 		if (policy.Mode == "team_first" || policy.Mode == "personal_first") && !team.AllowPersonalBackup {
 			return ErrTeamPersonalBackupDisabled
 		}
-	default:
-		return ErrTeamFundingState
 	}
 	policy.TokenID, policy.UserID = tokenID, userID
 	return DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "token_id"}}, DoUpdates: clause.AssignmentColumns([]string{"user_id", "team_id", "mode"})}).Create(&policy).Error
