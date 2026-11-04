@@ -26,6 +26,7 @@ import {
   Copy,
   Link,
   Loader2,
+  MoreHorizontal,
   SquareTerminal,
   Feather,
 } from 'lucide-react'
@@ -37,7 +38,6 @@ import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -54,7 +54,6 @@ import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
 import { encodeChannelConnectionInfo } from '@/lib/channel-connection-info'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { handleServerError } from '@/lib/handle-server-error'
-import { cn } from '@/lib/utils'
 
 import { updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
@@ -181,17 +180,14 @@ export function DataTableRowActions<TData>({
       aria-label={t('Key actions for {{name}}', { name: apiKey.name })}
       className={
         variant === 'card'
-          ? 'flex w-full flex-wrap items-center justify-between gap-2'
-          : 'flex w-44 flex-col gap-1.5'
+          ? 'flex w-full items-center justify-between gap-1'
+          : 'flex w-72 items-center justify-between gap-1'
       }
     >
       <div
         role='group'
         aria-label={t('Quick import')}
-        className={cn(
-          'grid grid-cols-[1.15fr_1fr] gap-1',
-          variant === 'card' && 'min-w-40 flex-1'
-        )}
+        className='flex shrink-0 items-center gap-1'
       >
         {(['cc-switch', 'magpie'] as const).map((client) => {
           const label = client === 'cc-switch' ? 'CC Switch' : 'Magpie'
@@ -263,10 +259,39 @@ export function DataTableRowActions<TData>({
           <TooltipContent>{t('Edit')}</TooltipContent>
         </Tooltip>
 
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='ghost'
+                size='icon-sm'
+                aria-label={t('Delete')}
+                className='text-muted-foreground hover:text-destructive'
+                onClick={() => {
+                  setCurrentRow(apiKey)
+                  setOpen('delete')
+                }}
+              />
+            }
+          >
+            <Trash2 />
+          </TooltipTrigger>
+          <TooltipContent>{t('Delete')}</TooltipContent>
+        </Tooltip>
+
         <DataTableRowActionMenu
           ariaLabel={t('Open menu')}
           contentClassName='w-[200px]'
           modal={false}
+          trigger={
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              className='data-popup-open:bg-muted'
+            >
+              <MoreHorizontal aria-hidden='true' />
+            </Button>
+          }
         >
           <DropdownMenuItem
             disabled={isRealKeyLoading}
@@ -300,7 +325,6 @@ export function DataTableRowActions<TData>({
               <Link size={16} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           {hasChatPresets && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>
@@ -321,19 +345,6 @@ export function DataTableRowActions<TData>({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              setCurrentRow(apiKey)
-              setOpen('delete')
-            }}
-            className='text-destructive focus:text-destructive'
-          >
-            {t('Delete')}
-            <DropdownMenuShortcut>
-              <Trash2 size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
         </DataTableRowActionMenu>
       </div>
     </div>

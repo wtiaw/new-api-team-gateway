@@ -53,6 +53,7 @@ import {
 import { apiKeySchema, type ApiKey } from '../../types'
 import { ApiKeyQuotaCell } from '../api-key-quota-cell'
 import { useApiKeysColumns } from '../api-keys-columns'
+import { ApiKeysDeleteDialog } from '../api-keys-delete-dialog'
 import { ApiKeysProvider } from '../api-keys-provider'
 import { ApiKeysTable } from '../api-keys-table'
 
@@ -298,6 +299,7 @@ function KeysPage() {
   return (
     <ApiKeysProvider>
       <ApiKeysTable />
+      <ApiKeysDeleteDialog />
       <Toaster />
     </ApiKeysProvider>
   )
@@ -387,7 +389,7 @@ async function renderKeysPage(
 }
 
 it.each([false, true])(
-  'keeps imports visible and separates them from key management (mobile: %s)',
+  'keeps imports and management directly available in one row (mobile: %s)',
   async (mobile) => {
     if (mobile) {
       const matchMedia = window.matchMedia
@@ -405,7 +407,7 @@ it.each([false, true])(
     const management = within(actions).getByRole('group', {
       name: 'Key management',
     })
-    expect(actions).toHaveClass(mobile ? 'w-full' : 'w-44')
+    expect(actions).toHaveClass(mobile ? 'w-full' : 'w-72')
     const ccSwitch = within(imports).getByRole('button', {
       name: 'Import production to CC Switch',
     })
@@ -415,13 +417,30 @@ it.each([false, true])(
     expect(ccSwitch).toBeVisible()
     expect(magpie).toBeVisible()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    for (const name of ['Disable', 'Edit', 'Open menu']) {
+    for (const name of ['Disable', 'Edit', 'Delete', 'Open menu']) {
       expect(within(management).getByRole('button', { name })).toBeVisible()
     }
     await user.click(magpie)
     expect(post).not.toHaveBeenCalled()
   }
 )
+
+it('opens the existing confirmation from the direct delete button and cancels without deleting', async () => {
+  await renderKeysPage()
+  const remove = vi.spyOn(api, 'delete')
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Delete' }))
+  const confirmation = await screen.findByRole('alertdialog', {
+    name: 'Are you sure?',
+  })
+  expect(confirmation).toHaveTextContent('production')
+  expect(remove).not.toHaveBeenCalled()
+  await user.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() =>
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  )
+  expect(remove).not.toHaveBeenCalled()
+})
 
 it.each([false, true])(
   'opens funding choices directly from the key row (mobile: %s)',
