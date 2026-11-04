@@ -96,7 +96,9 @@ async function renderCreateDrawer(
       team_name?: string
     }
   >,
-  saveAllowed = true
+  saveAllowed = true,
+  currentRow?: ApiKey,
+  defaultUseAutoGroup = true
 ): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -104,7 +106,7 @@ async function renderCreateDrawer(
   const freshAt = Date.now() + 60_000
   queryClient.setQueryData(
     ['status'],
-    { default_use_auto_group: true },
+    { default_use_auto_group: defaultUseAutoGroup },
     { updatedAt: freshAt }
   )
   queryClient.setQueryData(
@@ -132,13 +134,24 @@ async function renderCreateDrawer(
     },
     { updatedAt: freshAt }
   )
+  if (currentRow) {
+    queryClient.setQueryData(
+      ['api-key', currentRow.id],
+      { success: true, data: currentRow },
+      { updatedAt: freshAt }
+    )
+  }
   renderedDrawer = { queryClient }
 
   render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>
         <ApiKeysProvider>
-          <ApiKeysMutateDrawer open onOpenChange={() => undefined} />
+          <ApiKeysMutateDrawer
+            open
+            onOpenChange={() => undefined}
+            currentRow={currentRow}
+          />
         </ApiKeysProvider>
       </I18nextProvider>
     </QueryClientProvider>
@@ -221,7 +234,7 @@ afterEach(() => {
 })
 
 describe('API keys mutate drawer Auto group integration', () => {
-  test('a multi-team key requires an actual group and shows which team owns each choice', async () => {
+  test('a multi-team key defaults to the first group and preserves a manual selection when groups refresh', async () => {
     const payloads: Array<Record<string, unknown>> = []
     installApiFixtures(payloads)
     const groups = {
@@ -243,14 +256,83 @@ describe('API keys mutate drawer Auto group integration', () => {
       url === '/api/user/self/groups'
         ? { data: { success: true, data: groups } }
         : fixtureGet(url, data)
-    await renderCreateDrawer(groups, false)
+    await renderCreateDrawer(groups, true, undefined, false)
+    expect(getControlByLabel('Group')).toHaveTextContent('development')
     changeInput(getControlByLabel('Name'), 'multi-team-key')
     selectComboboxOption(getControlByLabel('Group'), 'Team: Testing')
+    await act(async () =>
+      renderedDrawer?.queryClient.setQueryData(['user-groups'], {
+        success: true,
+        data: { testing: groups.testing, development: groups.development },
+      })
+    )
+    expect(getControlByLabel('Group')).toHaveTextContent('testing')
     await waitFor(() => expect(findButton('Save changes', true)).toBeEnabled())
     fireEvent.click(findButton('Save changes', true))
     await waitFor(() => expect(payloads).toHaveLength(1))
     expect(payloads[0]).toMatchObject({ group: 'testing' })
   })
+  test.each([1, 2])(
+    'selects the first authorized group for a new key with %i real groups',
+    async (count) => {
+      const payloads: Array<Record<string, unknown>> = []
+      installApiFixtures(payloads)
+      const groups: Record<string, { desc: string; ratio: number }> = {
+        development: { desc: 'Development', ratio: 1 },
+      }
+      if (count === 2) groups.default = { desc: 'Standard access', ratio: 1 }
+      await renderCreateDrawer(groups, true, undefined, false)
+      expect(getControlByLabel('Group')).toHaveTextContent('development')
+      changeInput(getControlByLabel('Name'), 'first-group-key')
+      fireEvent.click(findButton('Save changes', true))
+      await waitFor(() => expect(payloads).toHaveLength(1))
+      expect(payloads[0]).toMatchObject({
+        group: 'development',
+        cross_group_retry: false,
+      })
+    }
+  )
+
+  test('keeps the selection empty when no groups are authorized', async () => {
+    installApiFixtures([])
+    await renderCreateDrawer({})
+    expect(getControlByLabel('Group')).toHaveTextContent('Select a group')
+    fireEvent.click(getControlByLabel('Group'))
+    expect(await screen.findByText('No group found.')).toBeVisible()
+  })
+
+  test('preserves the existing key group instead of selecting the first group when editing', async () => {
+    installApiFixtures([])
+    const existing: ApiKey = {
+      id: 7,
+      name: 'existing',
+      key: 'masked***',
+      status: 1,
+      remain_quota: 0,
+      used_quota: 0,
+      unlimited_quota: true,
+      expired_time: -1,
+      created_time: 0,
+      accessed_time: 0,
+      group: 'testing',
+      model_limits_enabled: false,
+      model_limits: '',
+      allow_ips: '',
+      auto_groups: null,
+      cross_group_retry: false,
+      allow_user_quota_query: true,
+    }
+    await renderCreateDrawer(
+      {
+        development: { desc: 'Development', ratio: 1 },
+        testing: { desc: 'Testing', ratio: 1.5 },
+      },
+      true,
+      existing
+    )
+    expect(getControlByLabel('Group')).toHaveTextContent('testing')
+  })
+
   test('inherits the root Auto order and sends an empty override for every batch-created key', async () => {
     const createdPayloads: Array<Record<string, unknown>> = []
     installApiFixtures(createdPayloads)

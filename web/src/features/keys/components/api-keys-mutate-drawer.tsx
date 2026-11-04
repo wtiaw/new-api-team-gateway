@@ -250,9 +250,11 @@ export function ApiKeysMutateDrawer({
         setInitializedTarget(target)
       }
     } else {
-      form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
-      )
+      const firstGroup = groups[0]?.value ?? ''
+      form.reset({
+        ...getApiKeyFormDefaultValues(firstGroup === 'auto'),
+        group: firstGroup,
+      })
       setInitializedTarget(target)
     }
   }, [
@@ -263,6 +265,7 @@ export function ApiKeysMutateDrawer({
     defaultUseAutoGroup,
     statusLoading,
     backendHasAuto,
+    groups,
     groupsFetched,
     groupsFetching,
     autoGroupsFetched,
@@ -287,7 +290,7 @@ export function ApiKeysMutateDrawer({
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
-    if (groups.length === 0) return
+    if (!open || !isFormInitialized || groups.length === 0) return
     const currentGroup = selectedGroup
     if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
       const fallback = hasMultipleTeams
@@ -302,7 +305,7 @@ export function ApiKeysMutateDrawer({
         form.setValue('cross_group_retry', false)
       }
     }
-  }, [groups, form, selectedGroup, hasMultipleTeams])
+  }, [open, isFormInitialized, groups, form, selectedGroup, hasMultipleTeams])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     if (

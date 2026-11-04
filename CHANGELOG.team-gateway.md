@@ -2,6 +2,11 @@
 
 本文件仅记录 fork 的团队扩展；上游发行说明见 [QuantumNous/new-api](https://github.com/QuantumNous/new-api/releases)。
 
+## team-v0.3.3 — 2026-11-04
+
+- 新建API密钥默认选中当前授权列表的第一个分组，单团队、多团队均适用；无可用组时保持为空。
+- 分组自动修正等待表单初始化完成，避免覆盖编辑密钥的有效分组；刷新列表保留用户手动选择。
+
 ## team-v0.3.2 — 2026-11-04
 
 - API密钥操作栏直接提供CC Switch、Magpie导入按钮，自动填入当前站点与所选Key；CC Switch默认Codex，Magpie自动发现Key可用模型。
