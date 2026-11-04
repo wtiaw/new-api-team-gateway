@@ -2,6 +2,10 @@
 
 本文件仅记录 fork 的团队扩展；上游发行说明见 [QuantumNous/new-api](https://github.com/QuantumNous/new-api/releases)。
 
+## team-v0.3.5 — 2026-11-04
+
+- CC Switch、Magpie入口改为轻量图标与文字按钮，去掉胶囊边框与常驻底色，保留悬停、键盘焦点和行内直达操作。
+
 ## team-v0.3.4 — 2026-11-04
 
 - API密钥操作栏分为直接导入与密钥管理两层，CC Switch、Magpie按钮常驻显示；桌面固定操作区增加列边界，避免与时间等信息混在一起。

@@ -26,6 +26,8 @@ import {
   Copy,
   Link,
   Loader2,
+  SquareTerminal,
+  Feather,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -187,18 +189,19 @@ export function DataTableRowActions<TData>({
         role='group'
         aria-label={t('Quick import')}
         className={cn(
-          'grid grid-cols-2 gap-1.5',
+          'grid grid-cols-[1.15fr_1fr] gap-1',
           variant === 'card' && 'min-w-40 flex-1'
         )}
       >
         {(['cc-switch', 'magpie'] as const).map((client) => {
           const label = client === 'cc-switch' ? 'CC Switch' : 'Magpie'
+          const Icon = client === 'cc-switch' ? SquareTerminal : Feather
           return (
             <Button
               key={client}
-              variant='outline'
+              variant='ghost'
               size='sm'
-              className='h-7 px-2 text-xs'
+              className='text-muted-foreground hover:bg-muted/60 hover:text-foreground h-7 justify-start gap-1 rounded-sm border-0 bg-transparent px-1 text-xs'
               aria-label={t('Import {{name}} to {{client}}', {
                 name: apiKey.name,
                 client: label,
@@ -208,6 +211,7 @@ export function DataTableRowActions<TData>({
                 setOpen(client)
               }}
             >
+              <Icon aria-hidden='true' className='text-primary/80 size-3.5' />
               {label}
             </Button>
           )
