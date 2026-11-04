@@ -19,9 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createInstance } from 'i18next'
+import { I18nextProvider } from 'react-i18next'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import zhCN from '@/i18n/locales/zh.json'
 import { getUserModels } from '@/lib/api'
 
 import { fetchTokenKey } from '../../../api'
@@ -279,4 +282,56 @@ describe('client import credential handling', () => {
     expect(url.searchParams.get('responses')).toBe('https://gateway.example/v1')
     expect(url.searchParams.has('models')).toBe(false)
   })
+})
+
+describe('client import Chinese interface', () => {
+  it.each(['cc-switch', 'magpie'] as const)(
+    'renders the %s dialog entirely in Simplified Chinese',
+    async (client) => {
+      const translations = createInstance()
+      await translations.init({
+        lng: 'zhCN',
+        resources: { zhCN },
+        initAsync: false,
+      })
+      const label = client === 'cc-switch' ? 'CC Switch' : 'Magpie'
+      render(
+        <QueryClientProvider client={queryClient}>
+          <I18nextProvider i18n={translations}>
+            <ClientImportDialog
+              open
+              onOpenChange={vi.fn()}
+              client={client}
+              apiKey={fixtureKey}
+            />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+      expect(
+        screen.getByRole('dialog', { name: `导入到 ${label}` })
+      ).toBeVisible()
+      expect(
+        screen.getByText('将当前 API 密钥和网关地址导入客户端。')
+      ).toBeVisible()
+      expect(screen.getByRole('button', { name: '复制导入链接' })).toBeEnabled()
+      expect(
+        screen.getByRole('button', { name: `打开 ${label}` })
+      ).toBeEnabled()
+      expect(screen.getByRole('button', { name: '取消' })).toBeVisible()
+      expect(screen.getByRole('link', { name: `下载 ${label}` })).toBeVisible()
+      expect(
+        screen.getByText(new RegExp(`请先安装并打开 ${label}`))
+      ).toBeVisible()
+      if (client === 'magpie') {
+        expect(
+          screen.getByText('Magpie 会自动获取此密钥可用的模型。')
+        ).toBeVisible()
+      } else {
+        expect(
+          screen.getByText('可选。留空则使用客户端默认模型。')
+        ).toBeVisible()
+      }
+      expect(fetchTokenKey).not.toHaveBeenCalled()
+    }
+  )
 })
