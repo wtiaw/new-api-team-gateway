@@ -2,6 +2,13 @@
 
 本文件仅记录 fork 的团队扩展；上游发行说明见 [QuantumNous/new-api](https://github.com/QuantumNous/new-api/releases)。
 
+## team-v0.3.2 — 2026-11-04
+
+- API密钥操作栏直接提供CC Switch、Magpie导入按钮，自动填入当前站点与所选Key；CC Switch默认Codex，Magpie自动发现Key可用模型。
+- 修复导入地址重复拼接`/v1`，显式声明CC Switch协议格式，并保留客户端确认／切换选择。
+- CC Switch模型候选遵守当前密钥分组与模型限制；取Key失败、取消或关闭弹窗后不启动客户端。导入链接通过本机协议传递，不经第三方网页。
+- 沿用既有本人Key服务端授权。针对OWASP ASVS5.0.0 V8（8.2.2、8.2.3、8.3.1、8.3.2、8.4.1）及Authentication/Session Management Cheat Sheets检查按需凭据获取、失败关闭与无明文持久化；不替代客户端自身的导入确认及安全验证。
+
 ## team-v0.3.1 — 2026-11-04
 
 - 修复分组定价页面、渠道分组选择器与实际路由不一致：兼容字段与typed字段现在同步持久化、同步发布，后台刷新与重启不再恢复旧分组。

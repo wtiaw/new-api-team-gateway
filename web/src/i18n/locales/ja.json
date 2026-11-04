@@ -7557,5 +7557,21 @@
     "Each resource group belongs to one team. Users can join multiple teams.": "各リソースグループは1つのチームに属します。ユーザーは複数のチームに参加できます。",
     "Group pricing must contain non-negative numbers": "グループ料金には0以上の数値を指定してください",
     "Conflicting group pricing settings": "グループ料金設定が競合しています"
-  }
+  },
+  "Import {{name}} to {{client}}": "{{name}} を {{client}} にインポート",
+  "Import to {{client}}": "{{client}} にインポート",
+  "Import this API key and gateway address into your client.": "この API キーとゲートウェイのアドレスをクライアントにインポートします。",
+  "Copy import link": "インポートリンクをコピー",
+  "Preparing import…": "インポートを準備中…",
+  "Open {{client}}": "{{client}} を開く",
+  "Confirm the import in {{client}}": "{{client}} でインポートを確認してください",
+  "Could not copy the import link": "インポートリンクをコピーできませんでした",
+  "Client import failed": "クライアントへのインポートに失敗しました",
+  "A valid HTTPS gateway address is required for client import": "インポートには有効な HTTPS ゲートウェイアドレスが必要です",
+  "Enter a name of 1 to 80 characters": "1〜80 文字の名前を入力してください",
+  "The full API key could not be retrieved": "完全な API キーを取得できませんでした",
+  "Optional. Leave empty to use the client default model.": "任意。空欄の場合はクライアントの既定モデルを使用します。",
+  "Magpie discovers the models available to this key automatically.": "Magpie はこのキーで利用できるモデルを自動取得します。",
+  "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "{{client}} をインストールして開き、ブラウザーの確認に応答してください。リンクには API キーが含まれるため共有しないでください。",
+  "Download {{client}}": "{{client}} をダウンロード"
 }

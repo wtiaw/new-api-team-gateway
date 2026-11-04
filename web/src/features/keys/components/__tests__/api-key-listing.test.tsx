@@ -386,6 +386,22 @@ async function renderKeysPage(
   return { post, put }
 }
 
+it('offers both client imports directly without fetching credentials on entry', async () => {
+  const { post } = await renderKeysPage()
+  const user = userEvent.setup()
+  const ccSwitch = screen.getByRole('button', {
+    name: 'Import production to CC Switch',
+  })
+  const magpie = screen.getByRole('button', {
+    name: 'Import production to Magpie',
+  })
+  expect(ccSwitch).toBeVisible()
+  expect(ccSwitch.parentElement).toHaveClass('md:min-w-64', 'flex-wrap')
+  expect(magpie).toBeVisible()
+  await user.click(magpie)
+  expect(post).not.toHaveBeenCalled()
+})
+
 it.each([false, true])(
   'opens funding choices directly from the key row (mobile: %s)',
   async (mobile) => {

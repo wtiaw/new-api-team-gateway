@@ -7557,5 +7557,21 @@
     "Each resource group belongs to one team. Users can join multiple teams.": "Each resource group belongs to one team. Users can join multiple teams.",
     "Group pricing must contain non-negative numbers": "Group pricing must contain non-negative numbers",
     "Conflicting group pricing settings": "Conflicting group pricing settings"
-  }
+  },
+  "Import {{name}} to {{client}}": "Import {{name}} to {{client}}",
+  "Import to {{client}}": "Import to {{client}}",
+  "Import this API key and gateway address into your client.": "Import this API key and gateway address into your client.",
+  "Copy import link": "Copy import link",
+  "Preparing import…": "Preparing import…",
+  "Open {{client}}": "Open {{client}}",
+  "Confirm the import in {{client}}": "Confirm the import in {{client}}",
+  "Could not copy the import link": "Could not copy the import link",
+  "Client import failed": "Client import failed",
+  "A valid HTTPS gateway address is required for client import": "A valid HTTPS gateway address is required for client import",
+  "Enter a name of 1 to 80 characters": "Enter a name of 1 to 80 characters",
+  "The full API key could not be retrieved": "The full API key could not be retrieved",
+  "Optional. Leave empty to use the client default model.": "Optional. Leave empty to use the client default model.",
+  "Magpie discovers the models available to this key automatically.": "Magpie discovers the models available to this key automatically.",
+  "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.",
+  "Download {{client}}": "Download {{client}}"
 }

@@ -23,7 +23,6 @@ import {
   Power,
   PowerOff,
   ExternalLink,
-  ArrowRightLeft,
   Copy,
   Link,
   Loader2,
@@ -85,7 +84,6 @@ export function DataTableRowActions<TData>({
     setOpen,
     setCurrentRow,
     triggerRefresh,
-    setResolvedKey,
     resolveRealKey,
     loadingKeys,
   } = useApiKeys()
@@ -173,7 +171,27 @@ export function DataTableRowActions<TData>({
   }
 
   return (
-    <div className='-ml-1.5 flex items-center gap-1'>
+    <div className='-ml-1.5 flex flex-wrap items-center gap-1 md:min-w-64'>
+      {(['cc-switch', 'magpie'] as const).map((client) => {
+        const label = client === 'cc-switch' ? 'CC Switch' : 'Magpie'
+        return (
+          <Button
+            key={client}
+            variant='outline'
+            size='xs'
+            aria-label={t('Import {{name}} to {{client}}', {
+              name: apiKey.name,
+              client: label,
+            })}
+            onClick={() => {
+              setCurrentRow(apiKey)
+              setOpen(client)
+            }}
+          >
+            {label}
+          </Button>
+        )
+      })}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -253,20 +271,6 @@ export function DataTableRowActions<TData>({
           </DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={async () => {
-            const realKey = await resolveRealKey(apiKey.id)
-            if (!realKey) return
-            setResolvedKey(realKey)
-            setCurrentRow(apiKey)
-            setOpen('cc-switch')
-          }}
-        >
-          {t('CC Switch')}
-          <DropdownMenuShortcut>
-            <ArrowRightLeft size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
         {hasChatPresets && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>

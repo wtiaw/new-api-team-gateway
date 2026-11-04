@@ -7557,5 +7557,21 @@
     "Each resource group belongs to one team. Users can join multiple teams.": "每个资源分组归属一个团队，用户可以加入多个团队。",
     "Group pricing must contain non-negative numbers": "分组定价必须为非负数",
     "Conflicting group pricing settings": "分组定价配置存在冲突"
-  }
+  },
+  "Import {{name}} to {{client}}": "将 {{name}} 导入 {{client}}",
+  "Import to {{client}}": "导入到 {{client}}",
+  "Import this API key and gateway address into your client.": "将当前 API 密钥和网关地址导入客户端。",
+  "Copy import link": "复制导入链接",
+  "Preparing import…": "正在准备导入…",
+  "Open {{client}}": "打开 {{client}}",
+  "Confirm the import in {{client}}": "请在 {{client}} 中确认导入",
+  "Could not copy the import link": "无法复制导入链接",
+  "Client import failed": "客户端导入失败",
+  "A valid HTTPS gateway address is required for client import": "客户端导入需要有效的 HTTPS 网关地址",
+  "Enter a name of 1 to 80 characters": "请输入 1 至 80 个字符的名称",
+  "The full API key could not be retrieved": "无法获取完整的 API 密钥",
+  "Optional. Leave empty to use the client default model.": "可选。留空则使用客户端默认模型。",
+  "Magpie discovers the models available to this key automatically.": "Magpie 会自动获取此密钥可用的模型。",
+  "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "请先安装并打开 {{client}}，然后确认浏览器提示。导入链接包含 API 密钥，请勿分享。",
+  "Download {{client}}": "下载 {{client}}"
 }
