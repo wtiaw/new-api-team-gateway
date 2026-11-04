@@ -7573,5 +7573,8 @@
   "Optional. Leave empty to use the client default model.": "Optional. Leave empty to use the client default model.",
   "Magpie discovers the models available to this key automatically.": "Magpie discovers the models available to this key automatically.",
   "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.",
-  "Download {{client}}": "Download {{client}}"
+  "Download {{client}}": "Download {{client}}",
+  "Key actions for {{name}}": "Key actions for {{name}}",
+  "Quick import": "Quick import",
+  "Key management": "Key management"
 }

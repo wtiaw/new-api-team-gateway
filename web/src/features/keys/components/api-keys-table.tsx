@@ -173,7 +173,6 @@ function ApiKeysMobileList({
               <div className='min-w-0 flex-1 [&_button:first-child]:max-w-full [&_button:first-child]:truncate [&_button:first-child]:px-0'>
                 <ApiKeyCell apiKey={apiKey} />
               </div>
-              <DataTableRowActions row={row} />
             </div>
 
             <div className='min-w-0 space-y-3 py-1'>
@@ -212,6 +211,9 @@ function ApiKeysMobileList({
                     expiryCell.getContext()
                   )}
               </div>
+            </div>
+            <div className='border-t pt-2'>
+              <DataTableRowActions row={row} variant='card' />
             </div>
           </div>
         )
@@ -355,6 +357,9 @@ export function ApiKeysTable() {
       )}
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
+      getColumnClassName={(columnId) =>
+        columnId === 'actions' ? 'border-l border-border/60 px-3' : undefined
+      }
       toolbarProps={{
         searchPlaceholder: t('Filter by name...'),
         searchDebounceMs: 500,

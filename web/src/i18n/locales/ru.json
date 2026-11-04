@@ -7573,5 +7573,8 @@
   "Optional. Leave empty to use the client default model.": "Необязательно. Оставьте пустым для модели клиента по умолчанию.",
   "Magpie discovers the models available to this key automatically.": "Magpie автоматически определяет доступные этому ключу модели.",
   "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "Установите и откройте {{client}}, затем подтвердите запрос браузера. Ссылки содержат API-ключ; не делитесь ими.",
-  "Download {{client}}": "Скачать {{client}}"
+  "Download {{client}}": "Скачать {{client}}",
+  "Key actions for {{name}}": "Действия с ключом {{name}}",
+  "Quick import": "Быстрый импорт",
+  "Key management": "Управление ключом"
 }

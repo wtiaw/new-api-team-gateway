@@ -386,21 +386,42 @@ async function renderKeysPage(
   return { post, put }
 }
 
-it('offers both client imports directly without fetching credentials on entry', async () => {
-  const { post } = await renderKeysPage()
-  const user = userEvent.setup()
-  const ccSwitch = screen.getByRole('button', {
-    name: 'Import production to CC Switch',
-  })
-  const magpie = screen.getByRole('button', {
-    name: 'Import production to Magpie',
-  })
-  expect(ccSwitch).toBeVisible()
-  expect(ccSwitch.parentElement).toHaveClass('md:min-w-64', 'flex-wrap')
-  expect(magpie).toBeVisible()
-  await user.click(magpie)
-  expect(post).not.toHaveBeenCalled()
-})
+it.each([false, true])(
+  'keeps imports visible and separates them from key management (mobile: %s)',
+  async (mobile) => {
+    if (mobile) {
+      const matchMedia = window.matchMedia
+      vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+        ...matchMedia(query),
+        matches: query.includes('max-width'),
+      }))
+    }
+    const { post } = await renderKeysPage()
+    const user = userEvent.setup()
+    const actions = screen.getByRole('group', {
+      name: 'Key actions for production',
+    })
+    const imports = within(actions).getByRole('group', { name: 'Quick import' })
+    const management = within(actions).getByRole('group', {
+      name: 'Key management',
+    })
+    expect(actions).toHaveClass(mobile ? 'w-full' : 'w-44')
+    const ccSwitch = within(imports).getByRole('button', {
+      name: 'Import production to CC Switch',
+    })
+    const magpie = within(imports).getByRole('button', {
+      name: 'Import production to Magpie',
+    })
+    expect(ccSwitch).toBeVisible()
+    expect(magpie).toBeVisible()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    for (const name of ['Disable', 'Edit', 'Open menu']) {
+      expect(within(management).getByRole('button', { name })).toBeVisible()
+    }
+    await user.click(magpie)
+    expect(post).not.toHaveBeenCalled()
+  }
+)
 
 it.each([false, true])(
   'opens funding choices directly from the key row (mobile: %s)',

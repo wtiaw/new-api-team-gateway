@@ -7573,5 +7573,8 @@
   "Optional. Leave empty to use the client default model.": "任意。空欄の場合はクライアントの既定モデルを使用します。",
   "Magpie discovers the models available to this key automatically.": "Magpie はこのキーで利用できるモデルを自動取得します。",
   "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "{{client}} をインストールして開き、ブラウザーの確認に応答してください。リンクには API キーが含まれるため共有しないでください。",
-  "Download {{client}}": "{{client}} をダウンロード"
+  "Download {{client}}": "{{client}} をダウンロード",
+  "Key actions for {{name}}": "{{name}} のキー操作",
+  "Quick import": "クイックインポート",
+  "Key management": "キー管理"
 }

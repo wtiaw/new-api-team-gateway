@@ -7573,5 +7573,8 @@
   "Optional. Leave empty to use the client default model.": "Không bắt buộc. Để trống để dùng mô hình mặc định của ứng dụng.",
   "Magpie discovers the models available to this key automatically.": "Magpie tự động tìm các mô hình khả dụng cho khóa này.",
   "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "Cài đặt và mở {{client}}, rồi xác nhận lời nhắc của trình duyệt. Liên kết chứa khóa API; không chia sẻ.",
-  "Download {{client}}": "Tải {{client}}"
+  "Download {{client}}": "Tải {{client}}",
+  "Key actions for {{name}}": "Thao tác khóa {{name}}",
+  "Quick import": "Nhập nhanh",
+  "Key management": "Quản lý khóa"
 }

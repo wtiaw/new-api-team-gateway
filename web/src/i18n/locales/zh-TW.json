@@ -7573,5 +7573,8 @@
   "Optional. Leave empty to use the client default model.": "選填。留空則使用用戶端預設模型。",
   "Magpie discovers the models available to this key automatically.": "Magpie 會自動取得此金鑰可用的模型。",
   "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "請先安裝並開啟 {{client}}，再確認瀏覽器提示。匯入連結包含 API 金鑰，請勿分享。",
-  "Download {{client}}": "下載 {{client}}"
+  "Download {{client}}": "下載 {{client}}",
+  "Key actions for {{name}}": "{{name}} 的金鑰操作",
+  "Quick import": "一鍵匯入",
+  "Key management": "金鑰管理"
 }

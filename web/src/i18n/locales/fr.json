@@ -7573,5 +7573,8 @@
   "Optional. Leave empty to use the client default model.": "Facultatif. Laissez vide pour utiliser le modèle par défaut du client.",
   "Magpie discovers the models available to this key automatically.": "Magpie détecte automatiquement les modèles accessibles avec cette clé.",
   "Install and open {{client}} first, then confirm the browser prompt. Import links contain your API key; keep them private.": "Installez et ouvrez {{client}}, puis confirmez l’invite du navigateur. Les liens contiennent votre clé API ; gardez-les privés.",
-  "Download {{client}}": "Télécharger {{client}}"
+  "Download {{client}}": "Télécharger {{client}}",
+  "Key actions for {{name}}": "Actions pour la clé {{name}}",
+  "Quick import": "Import rapide",
+  "Key management": "Gestion des clés"
 }
