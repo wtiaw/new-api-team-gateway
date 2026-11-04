@@ -20,11 +20,15 @@ import { flexRender, type Row } from '@tanstack/react-table'
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { GroupBadge } from '@/components/group-badge'
+import { GroupBadge, GroupMultiplierBadge } from '@/components/group-badge'
 import { StatusBadgeTypeContext } from '@/components/status-badge'
 
 import { CHANNEL_STATUS } from '../constants'
-import { isTagAggregateRow, parseGroupsList } from '../lib'
+import {
+  isTagAggregateRow,
+  parseChannelSettings,
+  parseGroupsList,
+} from '../lib'
 import type { Channel } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
@@ -62,6 +66,15 @@ function ChannelCardComponent({
   }
 
   const groups = parseGroupsList(row.original.group ?? '')
+  const configuredMultiplier = parseChannelSettings(
+    row.original.setting
+  )?.sales_multiplier
+  const salesMultiplier =
+    typeof configuredMultiplier === 'number' &&
+    Number.isFinite(configuredMultiplier) &&
+    configuredMultiplier > 0
+      ? configuredMultiplier
+      : 1
 
   const reorderCell = reorderEnabled ? renderCell('reorder') : null
   const selectCell = renderCell('select')
@@ -155,6 +168,15 @@ function ChannelCardComponent({
             </dl>
           </div>
         </StatusBadgeTypeContext.Provider>
+
+        {!isTagRow && (
+          <dl className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+            <dt className={labelClass}>{t('Channel Sales Multiplier')}</dt>
+            <dd>
+              <GroupMultiplierBadge ratio={salesMultiplier} />
+            </dd>
+          </dl>
+        )}
 
         {/* Groups retain their compact, full-width footer. */}
         <div className='min-w-0'>
