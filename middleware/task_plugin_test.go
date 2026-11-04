@@ -24,6 +24,7 @@ import (
 	builtinplugins "github.com/QuantumNous/new-api/plugins"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -2078,13 +2079,26 @@ func TestRouteTaskPluginEndpointUsesSelectedChannel(t *testing.T) {
 			// a test DSN at a database shared with another test suite.
 			database.Config.NamingStrategy = schema.NamingStrategy{TablePrefix: "endpoint_route_" + common.GetUUID() + "_"}
 			require.NoError(t, database.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.Task{}))
+			require.NoError(t, database.AutoMigrate(&model.User{}, &model.Team{}, &model.TeamMember{}))
+			require.NoError(t, database.Create(&model.User{Id: 7, Username: "route-member", AffCode: common.GetRandomString(16), Status: 1, Role: 1}).Error)
+			grantTeam := model.Team{Name: "Route test grants", Status: 1, AllowedGroups: []string{"route-test"}, DefaultGroup: "route-test"}
+			require.NoError(t, database.Create(&grantTeam).Error)
+			require.NoError(t, database.Create(&model.TeamMember{TeamID: grantTeam.ID, UserID: 7, Status: 1, Role: "member"}).Error)
+			oldGroupRatios := ratio_setting.GroupRatio2JSONString()
+			ratios := ratio_setting.GetGroupRatioCopy()
+			ratios["route-test"] = 1
+			encodedRatios, err := common.Marshal(ratios)
+			require.NoError(t, err)
+			require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(string(encodedRatios)))
+			t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatios)) })
+
 			t.Cleanup(func() {
 				for _, table := range []any{&model.Ability{}, &model.Channel{}, &model.Task{}} {
 					require.NoError(t, database.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(table).Error)
 				}
 				common.MemoryCacheEnabled = true
 				model.InitChannelCache()
-				require.NoError(t, database.Migrator().DropTable(&model.Ability{}, &model.Channel{}, &model.Task{}))
+				require.NoError(t, database.Migrator().DropTable(&model.TeamMember{}, &model.Team{}, &model.User{}, &model.Ability{}, &model.Channel{}, &model.Task{}))
 				model.DB = previousDB
 				common.SetDatabaseTypes(previousMain, previousLog)
 				common.SQLitePath, common.IsMasterNode = previousPath, previousMaster
@@ -2109,6 +2123,7 @@ func TestRouteTaskPluginEndpointUsesSelectedChannel(t *testing.T) {
 					common.MemoryCacheEnabled = memoryCache
 					for _, tc := range []struct {
 						name, path, model        string
+						modelLimit               string
 						pluginType               int
 						ordinaryType             int
 						ordinaryPriority         int64
@@ -2150,6 +2165,9 @@ func TestRouteTaskPluginEndpointUsesSelectedChannel(t *testing.T) {
 						{name: "selected plugin retains validation errors", pluginOnly: true, decoderRejects: true, wantStatus: http.StatusBadRequest},
 						{name: "selected plugin retains mode errors", path: "/v1/responses", pluginOnly: true, stream: true, syncOnly: true, wantStatus: http.StatusBadRequest},
 						{name: "origin task still pins its channel", pluginOnly: true, originPin: true, wantPlugin: true},
+						{name: "origin pin denies excluded key model", pluginOnly: true, originPin: true, wantPlugin: true, modelLimit: "other-model", wantStatus: http.StatusForbidden},
+						{name: "origin pin permits included key model", pluginOnly: true, originPin: true, wantPlugin: true, modelLimit: "channel-route-model"},
+
 						{name: "ordinary retries stay on ordinary channels", ordinaryPriority: 20, pluginPriority: 10, retry: true},
 						{name: "plugin retries stay on plugin channels", pluginPriority: 20, retry: true, wantPlugin: true},
 						{name: "rejected shared candidate still allows another plugin", pluginOnly: true, shared: true, decoderRejects: true, pluginPriority: 20, wantPlugin: true},
@@ -2252,6 +2270,11 @@ func TestRouteTaskPluginEndpointUsesSelectedChannel(t *testing.T) {
 							router.POST(path, func(c *gin.Context) {
 								common.SetContextKey(c, constant.ContextKeyUsingGroup, "route-test")
 								common.SetContextKey(c, constant.ContextKeyUserId, 7)
+								if tc.modelLimit != "" {
+									common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, true)
+									common.SetContextKey(c, constant.ContextKeyTokenModelLimit, map[string]bool{tc.modelLimit: true})
+								}
+
 								if tc.pinOrdinary || tc.pinPlugin {
 									id := ordinary.Id
 									if tc.pinPlugin {

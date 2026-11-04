@@ -50,11 +50,12 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
       <TruncatedCell
         className={isMobile ? 'w-full' : 'max-w-50'}
         tabIndex={0}
-        tooltipContent={group || t('Follow user group')}
+        tooltipContent={group || t('Follow default selection')}
         tooltipClassName='break-all'
       >
         <GroupBadge
           group={group}
+          label={group ? undefined : t('Default selection')}
           ratio={ratio}
           ratioLabel={group ? undefined : t('Inherited')}
           type='text'

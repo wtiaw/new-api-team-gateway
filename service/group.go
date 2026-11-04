@@ -96,6 +96,9 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 // The absence of the context value means that the token inherits the complete
 // global Auto list; a present (even empty) value is an explicit token snapshot.
 func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
+	if userID := c.GetInt("id"); userID > 0 {
+		return GetAccountAutoGroups(c, userID, userGroup)
+	}
 	value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
 	if !ok {
 		return GetUserAutoGroup(userGroup)
@@ -131,4 +134,112 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)
+}
+
+// GetAccountUsableGroups is the resource authority for both funding sources.
+func GetAccountUsableGroups(userID int, userGroup string) (map[string]string, error) {
+	team, native, err := model.ActiveTeamGroupProfile(userID, 0)
+	if err != nil {
+		return nil, err
+	}
+	if native {
+		return GetUserUsableGroups(userGroup), nil
+	}
+	groups := make(map[string]string)
+	if team != nil {
+		for _, group := range team.AllowedGroups {
+			if group != "" && group != "auto" && ratio_setting.ContainsGroupRatio(group) {
+				groups[group] = setting.GetUsableGroupDescription(group)
+			}
+		}
+		if len(groups) > 0 {
+			groups["auto"] = setting.GetUsableGroupDescription("auto")
+		}
+	}
+	return groups, nil
+}
+
+// ResolveAccountGroup prevents native defaults and saved keys from escaping team grants.
+func ResolveAccountGroup(userID, teamID int, userGroup, requested string) (string, error) {
+	team, native, err := model.ActiveTeamGroupProfile(userID, teamID)
+	if err != nil {
+		return "", err
+	}
+	if native {
+		if requested == "" {
+			requested = userGroup
+		}
+		if requested == "auto" || IsUserSelectableGroup(userGroup, requested) {
+			return requested, nil
+		}
+		return "", model.ErrTeamAccess
+	}
+	if team == nil {
+		return "", model.ErrTeamAccess
+	}
+	groups := make([]string, 0, len(team.AllowedGroups))
+	for _, group := range team.AllowedGroups {
+		if group != "" && group != "auto" && ratio_setting.ContainsGroupRatio(group) {
+			groups = append(groups, group)
+		}
+	}
+	if len(groups) == 0 {
+		return "", model.ErrTeamAccess
+	}
+	if requested == "auto" {
+		return requested, nil
+	}
+	if requested == "" {
+		requested = team.DefaultGroup
+		if requested == "" && len(groups) == 1 {
+			requested = groups[0]
+		}
+	}
+	for _, group := range groups {
+		if group == requested {
+			return requested, nil
+		}
+	}
+	return "", model.ErrTeamAccess
+}
+
+func GetAccountAutoGroups(c *gin.Context, userID int, userGroup string) []string {
+	team, native, err := model.ActiveTeamGroupProfile(userID, c.GetInt("resource_team_id"))
+	if err != nil {
+		return []string{}
+	}
+	if native {
+		value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
+		if !ok {
+			return GetUserAutoGroup(userGroup)
+		}
+		groups, _ := value.([]string)
+		return FilterUserTokenAutoGroups(userGroup, groups)
+	}
+	if team == nil {
+		return []string{}
+	}
+	candidates := team.AllowedGroups
+	value, explicit := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
+	if explicit {
+		candidates, _ = value.([]string)
+	}
+	result := make([]string, 0, len(candidates))
+	seen := make(map[string]bool)
+	for _, group := range candidates {
+		if seen[group] || group == "" || group == "auto" || !ratio_setting.ContainsGroupRatio(group) {
+			continue
+		}
+		for _, allowed := range team.AllowedGroups {
+			if allowed == group {
+				result = append(result, group)
+				seen[group] = true
+				break
+			}
+		}
+		if explicit && len(result) >= setting.GetMaxTokenAutoGroups() {
+			break
+		}
+	}
+	return result
 }

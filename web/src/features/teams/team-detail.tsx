@@ -26,6 +26,7 @@ import { teamGet } from './api'
 import { BalanceDialog } from './balance-dialog'
 import { TeamQueryState } from './query-state'
 import { TeamEditor } from './team-editor'
+import { TeamGroupSummary } from './team-group-settings'
 import { TeamInvitations } from './team-invitations'
 import { TeamMembers } from './team-members'
 import { TeamOverview } from './team-overview'
@@ -91,6 +92,7 @@ export function TeamDetailView(props: {
                 teamId={props.teamId}
                 detail={data}
               />
+              <TeamGroupSummary team={data.team} />
               {manage && (
                 <section
                   aria-label={t('Members')}

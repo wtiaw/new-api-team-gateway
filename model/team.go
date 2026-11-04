@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -26,15 +27,17 @@ var (
 )
 
 type Team struct {
-	AllowPersonalBackup bool   `json:"allow_personal_backup"`
-	ID                  int    `json:"id"`
-	Name                string `json:"name" gorm:"type:varchar(128);not null"`
-	Status              int    `json:"status"`
-	Balance             int64  `json:"balance" gorm:"type:bigint;not null;default:0"`
-	DailyLimit          *int64 `json:"daily_limit" gorm:"type:bigint"`
-	WeeklyLimit         *int64 `json:"weekly_limit" gorm:"type:bigint"`
-	CreatedAt           int64  `json:"created_at" gorm:"type:bigint"`
-	UpdatedAt           int64  `json:"updated_at" gorm:"type:bigint"`
+	AllowedGroups       []string `json:"allowed_groups" gorm:"serializer:json;type:text"`
+	DefaultGroup        string   `json:"default_group" gorm:"type:varchar(128)"`
+	AllowPersonalBackup bool     `json:"allow_personal_backup"`
+	ID                  int      `json:"id"`
+	Name                string   `json:"name" gorm:"type:varchar(128);not null"`
+	Status              int      `json:"status"`
+	Balance             int64    `json:"balance" gorm:"type:bigint;not null;default:0"`
+	DailyLimit          *int64   `json:"daily_limit" gorm:"type:bigint"`
+	WeeklyLimit         *int64   `json:"weekly_limit" gorm:"type:bigint"`
+	CreatedAt           int64    `json:"created_at" gorm:"type:bigint"`
+	UpdatedAt           int64    `json:"updated_at" gorm:"type:bigint"`
 }
 
 // Removed memberships remain stored for history but are excluded from member lists.
@@ -84,13 +87,17 @@ type TeamManagementEvent struct {
 	CreatedAt int64  `json:"created_at" gorm:"type:bigint"`
 }
 type TeamCreate struct {
-	AllowPersonalBackup *bool  `json:"allow_personal_backup"`
-	Name                string `json:"name"`
-	AdminUserID         int    `json:"admin_user_id"`
-	DailyLimit          *int64 `json:"daily_limit"`
-	WeeklyLimit         *int64 `json:"weekly_limit"`
+	AllowedGroups       []string `json:"allowed_groups"`
+	DefaultGroup        string   `json:"default_group"`
+	AllowPersonalBackup *bool    `json:"allow_personal_backup"`
+	Name                string   `json:"name"`
+	AdminUserID         int      `json:"admin_user_id"`
+	DailyLimit          *int64   `json:"daily_limit"`
+	WeeklyLimit         *int64   `json:"weekly_limit"`
 }
 type TeamUpdate struct {
+	AllowedGroups       *[]string       `json:"allowed_groups"`
+	DefaultGroup        *string         `json:"default_group"`
 	AllowPersonalBackup *bool           `json:"allow_personal_backup"`
 	Name                *string         `json:"name"`
 	Status              *int            `json:"status"`
@@ -230,6 +237,9 @@ func CreateTeam(actorID, globalRole int, input TeamCreate) (*Team, error) {
 	if input.Name == "" || utf8.RuneCountInString(input.Name) > 128 || !validTeamLimit(input.DailyLimit) || !validTeamLimit(input.WeeklyLimit) {
 		return nil, ErrTeamInput
 	}
+	if err := ValidateTeamGroups(input.AllowedGroups, input.DefaultGroup); err != nil {
+		return nil, err
+	}
 	var team Team
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		actor, err := teamActor(tx, actorID, globalRole)
@@ -248,7 +258,7 @@ func CreateTeam(actorID, globalRole int, input TeamCreate) (*Team, error) {
 		if input.AllowPersonalBackup != nil {
 			allowBackup = *input.AllowPersonalBackup
 		}
-		team = Team{AllowPersonalBackup: allowBackup, Name: input.Name, Status: 1, DailyLimit: input.DailyLimit, WeeklyLimit: input.WeeklyLimit, CreatedAt: now, UpdatedAt: now}
+		team = Team{AllowedGroups: append([]string{}, input.AllowedGroups...), DefaultGroup: input.DefaultGroup, AllowPersonalBackup: allowBackup, Name: input.Name, Status: 1, DailyLimit: input.DailyLimit, WeeklyLimit: input.WeeklyLimit, CreatedAt: now, UpdatedAt: now}
 		if err = tx.Create(&team).Error; err != nil {
 			return err
 		}
@@ -270,10 +280,28 @@ func UpdateTeam(teamID, actorID, globalRole int, input TeamUpdate) (*Team, error
 		if err != nil {
 			return err
 		}
-		if role != "system" && (input.Status != nil || input.AdminUserID != nil || input.AllowPersonalBackup != nil) {
+		if role != "system" && (input.Status != nil || input.AdminUserID != nil || input.AllowPersonalBackup != nil || input.AllowedGroups != nil || input.DefaultGroup != nil) {
 			return ErrTeamAccess
 		}
 		updates := map[string]any{"updated_at": time.Now().Unix()}
+		if input.AllowedGroups != nil || input.DefaultGroup != nil {
+			groups, defaultGroup := team.AllowedGroups, team.DefaultGroup
+			if input.AllowedGroups != nil {
+				groups = *input.AllowedGroups
+			}
+			if input.DefaultGroup != nil {
+				defaultGroup = *input.DefaultGroup
+			}
+			if err := ValidateTeamGroups(groups, defaultGroup); err != nil {
+				return err
+			}
+			encoded, err := common.Marshal(groups)
+			if err != nil {
+				return err
+			}
+			updates["allowed_groups"], updates["default_group"] = string(encoded), defaultGroup
+		}
+
 		if input.AllowPersonalBackup != nil {
 			updates["allow_personal_backup"] = *input.AllowPersonalBackup
 		}
@@ -642,4 +670,70 @@ func AcceptTeamInvitation(raw string, userID int) (*TeamMember, error) {
 		return teamEvent(tx, team.ID, userID, "team.invitation.accept", nil, map[string]any{"invitation_id": invite.ID, "member": result})
 	})
 	return &result, err
+}
+
+// ValidateTeamGroups rejects synthetic Auto, stale registry entries and ambiguous defaults.
+// Empty profiles are persisted for upgrades but authorize no resource access.
+func ValidateTeamGroups(groups []string, defaultGroup string) error {
+	if len(groups) == 0 {
+		if defaultGroup != "" {
+			return ErrTeamInput
+		}
+		return nil
+	}
+	seen := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		if group == "" || group == "auto" || strings.TrimSpace(group) != group || seen[group] || !ratio_setting.ContainsGroupRatio(group) {
+			return ErrTeamInput
+		}
+		seen[group] = true
+	}
+	if !seen[defaultGroup] {
+		return ErrTeamInput
+	}
+	return nil
+}
+
+// ActiveTeamGroupProfile always reads current membership, so revocations apply to old keys.
+// A system administrator without membership retains native testing privileges.
+func ActiveTeamGroupProfile(userID, preferredTeamID int) (*Team, bool, error) {
+	var user User
+	if err := DB.First(&user, userID).Error; err != nil {
+		return nil, false, err
+	}
+	if user.Status != common.UserStatusEnabled {
+		return nil, false, ErrTeamAccess
+	}
+	var teams []Team
+	query := DB.Model(&Team{}).Table(DB.NamingStrategy.TableName("Team")+" AS teams").Select("teams.*").Joins("JOIN "+DB.NamingStrategy.TableName("TeamMember")+" AS team_members ON team_members.team_id = teams.id").Where("team_members.user_id = ? AND team_members.status = ? AND teams.status = ?", userID, 1, 1)
+	if preferredTeamID > 0 {
+		query = query.Where("teams.id = ?", preferredTeamID)
+	}
+	if err := query.Order("teams.id").Limit(2).Find(&teams).Error; err != nil {
+		return nil, false, err
+	}
+	if len(teams) > 1 {
+		return nil, false, ErrTeamAccess
+	}
+	if len(teams) > 0 {
+		return &teams[0], false, nil
+	}
+	if preferredTeamID == 0 && user.Role >= common.RoleAdminUser {
+		// Disabled or removed memberships must not silently restore native privileges.
+		var memberships int64
+		if err := DB.Model(&TeamMember{}).Where("user_id = ?", userID).Count(&memberships).Error; err != nil {
+			return nil, false, err
+		}
+		if memberships == 0 {
+			return nil, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+func (t *Team) AfterFind(_ *gorm.DB) error {
+	if t.AllowedGroups == nil {
+		t.AllowedGroups = []string{}
+	}
+	return nil
 }

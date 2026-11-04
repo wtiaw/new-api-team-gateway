@@ -7537,6 +7537,17 @@
     "Member weekly team allowance reached": "Member weekly team allowance reached",
     "Member / API Key": "Member / API Key",
     "Usage record details": "Usage record details",
-    "Copy request ID": "Copy request ID"
+    "Copy request ID": "Copy request ID",
+    "Team routing groups": "Team routing groups",
+    "Team allowed groups": "Team allowed groups",
+    "Default team group": "Default team group",
+    "Default selection": "Default selection",
+    "Select a default from the allowed team groups": "Select a default from the allowed team groups",
+    "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.": "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.",
+    "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.": "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.",
+    "No groups granted. Members cannot call models until groups are assigned.": "No groups granted. Members cannot call models until groups are assigned.",
+    "The default selection must be an allowed group, such as Development. It does not create a group named default.": "The default selection must be an allowed group, such as Development. It does not create a group named default.",
+    "Failed to load groups": "Failed to load groups",
+    "Follow default selection": "Follow default selection"
   }
 }

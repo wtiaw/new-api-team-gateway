@@ -7537,6 +7537,17 @@
     "Member weekly team allowance reached": "Member weekly team allowance reached",
     "Member / API Key": "Участник / API-ключ",
     "Usage record details": "Подробности использования",
-    "Copy request ID": "Копировать ID запроса"
+    "Copy request ID": "Копировать ID запроса",
+    "Team routing groups": "Доступные группы команды",
+    "Team allowed groups": "Разрешённые группы",
+    "Default team group": "Группа по умолчанию",
+    "Default selection": "По умолчанию",
+    "Select a default from the allowed team groups": "Выберите группу по умолчанию из разрешённых",
+    "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.": "Личная и командная оплата используют одни разрешённые группы. Смена плательщика не меняет выбранную группу.",
+    "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.": "Группы назначает системный администратор для обоих способов оплаты. Обычные пользователи без команды не имеют доступа к группам.",
+    "No groups granted. Members cannot call models until groups are assigned.": "Группы не назначены. До назначения участники не могут вызывать модели.",
+    "The default selection must be an allowed group, such as Development. It does not create a group named default.": "Выберите разрешённую группу, например «Разработка». Группа с именем default не создаётся.",
+    "Failed to load groups": "Не удалось загрузить группы",
+    "Follow default selection": "Использовать выбор по умолчанию"
   }
 }

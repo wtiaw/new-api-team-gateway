@@ -7537,6 +7537,17 @@
     "Member weekly team allowance reached": "Member weekly team allowance reached",
     "Member / API Key": "Thành viên / khóa API",
     "Usage record details": "Chi tiết sử dụng",
-    "Copy request ID": "Sao chép ID yêu cầu"
+    "Copy request ID": "Sao chép ID yêu cầu",
+    "Team routing groups": "Nhóm được phép của đội",
+    "Team allowed groups": "Nhóm được phép",
+    "Default team group": "Lựa chọn mặc định",
+    "Default selection": "Mặc định",
+    "Select a default from the allowed team groups": "Chọn nhóm mặc định trong các nhóm được phép",
+    "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.": "Thanh toán cá nhân và đội dùng cùng các nhóm được đội cho phép. Đổi bên trả phí không đổi nhóm đã chọn.",
+    "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.": "Chỉ quản trị hệ thống được cấp nhóm cho cả hai cách thanh toán. Người dùng thường chưa có đội không được dùng nhóm.",
+    "No groups granted. Members cannot call models until groups are assigned.": "Chưa cấp nhóm. Thành viên chưa thể gọi mô hình cho đến khi được cấp nhóm.",
+    "The default selection must be an allowed group, such as Development. It does not create a group named default.": "Chọn một nhóm được phép, ví dụ Phát triển. Không tạo nhóm tên default.",
+    "Failed to load groups": "Không tải được danh sách nhóm",
+    "Follow default selection": "Theo lựa chọn mặc định"
   }
 }

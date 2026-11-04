@@ -49,7 +49,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}, &model.Team{}, &model.TeamMember{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -188,6 +188,7 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 		Username: "playground-model-user",
 		Password: "password",
 		Group:    "default",
+		Role:     common.RoleAdminUser,
 		Status:   common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
@@ -242,6 +243,7 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 		Username: "playground-auto-model-user",
 		Password: "password",
 		Group:    "default",
+		Role:     common.RoleAdminUser,
 		Status:   common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
@@ -282,6 +284,7 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 		Username: "model-list-user",
 		Password: "password",
 		Group:    "default",
+		Role:     common.RoleAdminUser,
 		Status:   common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
@@ -337,6 +340,7 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		Username: "advanced-custom-model-list-user",
 		Password: "password",
 		Group:    "default",
+		Role:     common.RoleAdminUser,
 		Status:   common.UserStatusEnabled,
 	}).Error)
 

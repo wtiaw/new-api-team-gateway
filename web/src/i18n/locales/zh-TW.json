@@ -7537,6 +7537,17 @@
     "Member weekly team allowance reached": "成员每周团队额度已用尽",
     "Member / API Key": "成員 / API 金鑰",
     "Usage record details": "使用記錄詳情",
-    "Copy request ID": "複製請求 ID"
+    "Copy request ID": "複製請求 ID",
+    "Team routing groups": "團隊可用群組",
+    "Team allowed groups": "授權群組",
+    "Default team group": "預設選擇",
+    "Default selection": "預設",
+    "Select a default from the allowed team groups": "請從授權群組中指定預設選擇",
+    "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.": "個人與團隊付費共用團隊授權的群組，切換付款方不會改變選中的群組。",
+    "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.": "僅系統管理員可授權群組。個人與團隊付費共用這些群組，未加入團隊的一般使用者沒有群組使用權限。",
+    "No groups granted. Members cannot call models until groups are assigned.": "尚未授權群組，成員暫時無法呼叫模型。",
+    "The default selection must be an allowed group, such as Development. It does not create a group named default.": "預設選擇須為授權群組之一，例如「開發」；不會建立名為 default 的群組。",
+    "Failed to load groups": "載入群組失敗",
+    "Follow default selection": "跟隨預設選擇"
   }
 }

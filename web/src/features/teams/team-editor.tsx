@@ -31,6 +31,7 @@ import { Switch } from '@/components/ui/switch'
 import { useTeamMutation } from './api'
 import { TEAM_QUOTA_PER_USD, usdToQuota } from './quota'
 import { TeamAdminPicker } from './team-admin-picker'
+import { TeamGroupSettings } from './team-group-settings'
 import type { Team } from './types'
 
 const amount = z.string().refine((value) => {
@@ -54,6 +55,8 @@ const schema = z.object({
     ),
   status: z.string(),
   allowPersonalBackup: z.boolean(),
+  allowedGroups: z.array(z.string()),
+  defaultGroup: z.string(),
 })
 export function TeamEditor(props: {
   team?: Team
@@ -77,6 +80,8 @@ export function TeamEditor(props: {
       admin: '',
       status: String(props.team?.status ?? 1),
       allowPersonalBackup: props.team?.allow_personal_backup ?? true,
+      allowedGroups: props.team?.allowed_groups ?? [],
+      defaultGroup: props.team?.default_group ?? '',
     },
   })
   const save = useTeamMutation(() => props.onOpenChange(false))
@@ -94,7 +99,19 @@ export function TeamEditor(props: {
             daily_limit: usdToQuota(values.daily),
             weekly_limit: usdToQuota(values.weekly),
           }
+          if (
+            props.system &&
+            values.allowedGroups.length > 0 &&
+            !values.allowedGroups.includes(values.defaultGroup)
+          ) {
+            form.setError('defaultGroup', {
+              message: 'Select a default from the allowed team groups',
+            })
+            return
+          }
           if (props.system) {
+            body.allowed_groups = values.allowedGroups
+            body.default_group = values.defaultGroup
             body.allow_personal_backup = values.allowPersonalBackup
             body.status = Number(values.status)
             if (values.admin) body.admin_user_id = Number(values.admin)
@@ -185,6 +202,19 @@ export function TeamEditor(props: {
             )}
           </>
         )}
+        <TeamGroupSettings
+          system={props.system}
+          value={{
+            allowed_groups: form.watch('allowedGroups'),
+            default_group: form.watch('defaultGroup'),
+          }}
+          onChange={(value) => {
+            form.setValue('allowedGroups', value.allowed_groups)
+            form.setValue('defaultGroup', value.default_group)
+            form.clearErrors('defaultGroup')
+          }}
+          error={form.formState.errors.defaultGroup?.message}
+        />
         <div className='flex items-center gap-3'>
           <Switch
             id='team-personal-backup'

@@ -56,7 +56,14 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	usableGroup = service.GetUserUsableGroups(group)
+	if exists {
+		var err error
+		usableGroup, err = service.GetAccountUsableGroups(userId.(int), group)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	pricing = slices.Clone(pricing)
 	for i := range pricing {
@@ -67,6 +74,18 @@ func GetPricing(c *gin.Context) {
 			}
 		}
 		pricing[i].ChannelSalesRanges = spans
+		enabled := make([]string, 0, len(pricing[i].EnableGroup))
+		for _, g := range pricing[i].EnableGroup {
+			if g == "all" {
+				enabled = append(enabled, g)
+				continue
+			}
+			if _, ok := usableGroup[g]; ok {
+				enabled = append(enabled, g)
+			}
+		}
+		pricing[i].EnableGroup = enabled
+
 	}
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
@@ -82,7 +101,7 @@ func GetPricing(c *gin.Context) {
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroup(group),
+		"auto_groups":        service.GetAccountAutoGroups(c, c.GetInt("id"), group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }

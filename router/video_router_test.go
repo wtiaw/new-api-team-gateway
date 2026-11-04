@@ -51,14 +51,19 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 		Group:       "default",
 		AuthVersion: 1,
 	}).Error)
+
+	team := model.Team{Name: "Video grants", Status: 1, AllowPersonalBackup: true, AllowedGroups: []string{"default"}, DefaultGroup: "default"}
+	require.NoError(t, database.Create(&team).Error)
+	require.NoError(t, database.Create(&model.TeamMember{TeamID: team.ID, UserID: 91, Status: 1, Role: "member"}).Error)
 	require.NoError(t, database.Create(&model.Token{
-		Id:             1,
-		UserId:         91,
-		Key:            "jimengfetch",
-		Status:         common.TokenStatusEnabled,
-		Name:           "jimeng fetch",
-		ExpiredTime:    -1,
-		UnlimitedQuota: true,
+		Id:                 1,
+		UserId:             91,
+		Key:                "jimengfetch",
+		Status:             common.TokenStatusEnabled,
+		Name:               "jimeng fetch",
+		ExpiredTime:        -1,
+		UnlimitedQuota:     true,
+		ModelLimitsEnabled: true, ModelLimits: "jimeng_vgfm_t2v_l20",
 	}).Error)
 	require.NoError(t, database.Create(&model.Channel{
 		Id:     17,
@@ -71,15 +76,16 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 	}).Error)
 
 	task := &model.Task{
-		CreatedAt: 1710000000,
-		UpdatedAt: 1710000060,
-		TaskID:    "task_jimeng_public",
-		Platform:  constant.TaskPlatform("jimeng"),
-		UserId:    91,
-		Group:     "default",
-		ChannelId: 17,
-		Status:    model.TaskStatusSuccess,
-		Progress:  "100%",
+		CreatedAt:  1710000000,
+		UpdatedAt:  1710000060,
+		TaskID:     "task_jimeng_public",
+		Platform:   constant.TaskPlatform("jimeng"),
+		UserId:     91,
+		Group:      "default",
+		ChannelId:  17,
+		Status:     model.TaskStatusSuccess,
+		Properties: model.Properties{OriginModelName: "jimeng_vgfm_t2v_l20"},
+		Progress:   "100%",
 		PrivateData: model.TaskPrivateData{
 			ResultURL: "data:video/mp4;base64,ZGF0YQ==",
 		},

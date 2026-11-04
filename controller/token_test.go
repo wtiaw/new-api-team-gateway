@@ -192,6 +192,7 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 }
 
 func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
+	grantControllerTestGroups(t, model.DB, userID, []string{"default"})
 	t.Helper()
 
 	var requestBody *bytes.Reader
@@ -769,6 +770,7 @@ func verifyAPITokenAudit(t *testing.T) {
 	pat := "api-token-audit-pat-secret"
 	user := &model.User{Username: "token-owner", Password: "placeholder", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AccessToken: &pat, AffCode: "token-owner"}
 	require.NoError(t, model.DB.Create(user).Error)
+	grantControllerTestGroups(t, model.DB, user.Id, []string{"default"})
 	other := &model.User{Username: "other-owner", Password: "placeholder", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "other-owner"}
 	require.NoError(t, model.DB.Create(other).Error)
 	session := &model.UserSession{SID: "token-audit-session", UserID: user.Id, Version: 1, UserAuthVersion: 1, Status: model.UserSessionStatusActive, RefreshHash: "placeholder", LoginMethod: "password", LastActiveAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix()}
@@ -1016,4 +1018,26 @@ func verifyAPITokenAudit(t *testing.T) {
 		require.NoError(t, model.DB.Model(&model.Token{}).Where("name = ?", "audit-down").Count(&count).Error)
 		assert.EqualValues(t, 1, count)
 	})
+}
+
+func grantControllerTestGroups(t *testing.T, db *gorm.DB, userID int, groups []string) {
+	t.Helper()
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Team{}, &model.TeamMember{}))
+	var count int64
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", userID).Count(&count).Error)
+	if count == 0 {
+		require.NoError(t, db.Create(&model.User{Id: userID, Username: fmt.Sprintf("fixture-%d", userID), AffCode: fmt.Sprintf("fixture-%d", userID), Role: common.RoleCommonUser, Status: 1, Group: "default"}).Error)
+	}
+	var user model.User
+	require.NoError(t, db.First(&user, userID).Error)
+	if user.Role >= common.RoleAdminUser {
+		return
+	}
+	require.NoError(t, db.Model(&model.TeamMember{}).Where("user_id = ?", userID).Count(&count).Error)
+	if count > 0 {
+		return
+	}
+	team := model.Team{Name: "Explicit controller grants", Status: 1, AllowPersonalBackup: true, AllowedGroups: groups, DefaultGroup: groups[0]}
+	require.NoError(t, db.Create(&team).Error)
+	require.NoError(t, db.Create(&model.TeamMember{TeamID: team.ID, UserID: userID, Role: "member", Status: 1}).Error)
 }

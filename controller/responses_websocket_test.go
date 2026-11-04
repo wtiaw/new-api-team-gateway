@@ -40,6 +40,7 @@ var responsesWSTestUserSequence atomic.Int64
 
 func setupResponsesWSRequestTest(t *testing.T) (*model.User, *model.Token) {
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
 	previousType := common.MainDatabaseType()
@@ -97,6 +98,8 @@ func setupResponsesWSRequestTest(t *testing.T) (*model.User, *model.Token) {
 	require.NoError(t, db.Create(user).Error)
 	token := &model.Token{UserId: user.Id, Key: "responseswstoken", Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 100}
 	require.NoError(t, db.Create(token).Error)
+	grantControllerTestGroups(t, db, user.Id, []string{"default"})
+	require.NoError(t, model.SetTeamKeyPolicy(token.Id, user.Id, model.TeamKeyPolicy{Mode: "personal_only"}))
 	t.Cleanup(func() {
 		require.NoError(t, db.Unscoped().Delete(token).Error)
 		require.NoError(t, db.Unscoped().Delete(user).Error)
@@ -175,7 +178,7 @@ func TestResponsesWSRequestRunnerRefreshesBillingContextAndCleansBody(t *testing
 		assert.True(t, c.GetBool("token_model_limit_enabled"))
 		modelLimits, _ := c.Get("token_model_limit")
 		assert.Equal(t, map[string]bool{"gpt-5.1": true}, modelLimits)
-		assert.Equal(t, "updated", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		assert.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "native user group changes must not override team resource grants")
 		userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting)
 		require.True(t, ok)
 		assert.Equal(t, "wallet_only", userSetting.BillingPreference)

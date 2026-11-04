@@ -7537,6 +7537,17 @@
     "Member weekly team allowance reached": "Member weekly team allowance reached",
     "Member / API Key": "メンバー / API キー",
     "Usage record details": "使用記録の詳細",
-    "Copy request ID": "リクエスト ID をコピー"
+    "Copy request ID": "リクエスト ID をコピー",
+    "Team routing groups": "チームの利用可能グループ",
+    "Team allowed groups": "許可グループ",
+    "Default team group": "既定のグループ",
+    "Default selection": "既定",
+    "Select a default from the allowed team groups": "許可グループから既定を選択してください",
+    "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.": "個人払いとチーム払いは同じ許可グループを利用します。支払元を切り替えてもグループは変わりません。",
+    "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.": "グループの許可はシステム管理者が設定します。支払元に関係なく共通で、チームに未加入の一般ユーザーは利用できません。",
+    "No groups granted. Members cannot call models until groups are assigned.": "グループが未許可のため、メンバーはモデルを利用できません。",
+    "The default selection must be an allowed group, such as Development. It does not create a group named default.": "「開発」など許可済みグループを既定として選びます。default という名前のグループは作成しません。",
+    "Failed to load groups": "グループの読み込みに失敗しました",
+    "Follow default selection": "既定の選択に従う"
   }
 }

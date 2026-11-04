@@ -45,6 +45,7 @@ func setupTokenAutoGroupsControllerTest(t *testing.T) *model.User {
 	user := &model.User{
 		Id:       101,
 		Username: "token-auto-user",
+		Role:     common.RoleAdminUser,
 		Password: "password",
 		Group:    "default",
 		Status:   common.UserStatusEnabled,

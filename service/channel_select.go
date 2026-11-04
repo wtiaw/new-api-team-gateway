@@ -112,6 +112,11 @@ func (p *RetryParam) ResetRetryNextTry() {
 //	Retry=3: GroupB, priority1 (startRetryIndex=2, priorityRetry=1)
 //	         分组B, 优先级1
 func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
+	if userID := param.Ctx.GetInt("id"); userID > 0 {
+		if _, err := ResolveAccountGroup(userID, param.Ctx.GetInt("resource_team_id"), common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup), param.TokenGroup); err != nil {
+			return nil, param.TokenGroup, err
+		}
+	}
 	var channel *model.Channel
 	var err error
 	selectGroup := param.TokenGroup
@@ -281,6 +286,11 @@ type ChannelSelectError struct {
 // filters. The group the channel was chosen from is returned for auto-group
 // callers. The caller still applies SetupContextForSelectedChannel.
 func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
+	if userID := c.GetInt("id"); userID > 0 {
+		if _, err := ResolveAccountGroup(userID, c.GetInt("resource_team_id"), common.GetContextKeyString(c, constant.ContextKeyUserGroup), retry.TokenGroup); err != nil {
+			return nil, "", &ChannelSelectError{StatusCode: http.StatusForbidden, Code: types.ErrorCodeAccessDenied, Message: "Team access denied"}
+		}
+	}
 	constraints := GetChannelConstraints(c)
 	if pin, found, overridden := constraints.ResolvedPin(); found {
 		for _, lost := range overridden {
@@ -302,6 +312,26 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 				Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},
 				FilterKind: kind, Channel: channel,
 			}
+		}
+		if c.GetInt("id") > 0 {
+			groups := []string{retry.TokenGroup}
+			if retry.TokenGroup == "auto" {
+				groups = GetRequestAutoGroups(c, common.GetContextKeyString(c, constant.ContextKeyUserGroup))
+			}
+			selected := ""
+			for _, group := range groups {
+				if model.IsChannelEnabledForGroupModel(group, modelName, channel.Id) {
+					selected = group
+					break
+				}
+			}
+			if selected == "" {
+				return nil, "", &ChannelSelectError{StatusCode: http.StatusForbidden, Code: types.ErrorCodeAccessDenied, Message: "Team access denied"}
+			}
+			if retry.TokenGroup == "auto" {
+				common.SetContextKey(c, constant.ContextKeyAutoGroup, selected)
+			}
+			return channel, selected, nil
 		}
 		return channel, "", nil
 	}

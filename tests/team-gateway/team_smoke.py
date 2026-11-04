@@ -166,6 +166,9 @@ def seed(admin):
     admin.api("POST", "/api/user/manage", {"id": info["id"], "action": "add_quota", "mode": "add", "value": 1000100})
     admin.api("POST", "/api/user/manage", {"id": info["id"], "action": "add_quota", "mode": "subtract", "value": 100})
     require(member.api("GET", "/api/user/self")["quota"] == 1000000, "system directly credits and debits personal wallet")
+    status, teams = admin.request("GET", "/api/teams")
+    if isinstance(teams, dict) and teams.get("success"):
+        admin.api("POST", "/api/teams", {"name":"Legacy personal access", "admin_user_id":info["id"], "allowed_groups":["default"], "default_group":"default"})
     item, bearer = token(member, "legacy-preserved")
     status, result = relay(member, bearer)
     require(status == 200 and result["usage"]["total_tokens"] == 20, "legacy fixture relay")
@@ -181,7 +184,11 @@ def verify_legacy(admin, snapshot):
     require(info["quota"] == snapshot["quota"], "upgrade preserves exact personal quota")
     keys = snapshot["client"].api("GET", "/api/token/?p=1&page_size=100")["items"]
     require(any(x["id"] == snapshot["key_id"] and x["name"] == "legacy-preserved" for x in keys), "upgrade preserves existing native key")
-    require(snapshot["client"].request("GET", "/v1/models", bearer=snapshot["bearer"])[0] == 200, "existing native key authenticates after restart")
+    if not snapshot["client"].api("GET", "/api/teams"):
+        require(snapshot["client"].api("GET", "/api/user/self/groups") == {}, "unassigned upgraded account has no group grants")
+        require(snapshot["client"].request("GET", "/v1/models", bearer=snapshot["bearer"])[0] == 403, "old key cannot bypass new membership grants")
+        admin.api("POST", "/api/teams", {"name":"Legacy restored access", "admin_user_id":snapshot["user_id"], "allowed_groups":["default"], "default_group":"default"})
+    require(snapshot["client"].request("GET", "/v1/models", bearer=snapshot["bearer"])[0] == 200, "existing native key works once administrator grants group access")
     # Native admin log API verifies the separately configured log database too.
     logs = admin.api("GET", "/api/log/?type=2&p=1&page_size=100")["items"]
     require(any(x["user_id"] == snapshot["user_id"] and x["token_id"] == snapshot["key_id"] and x["quota"] == 14 and x["prompt_tokens"] == 12 and x["completion_tokens"] == 8 for x in logs), "upgrade preserves original consume log")
@@ -195,12 +202,11 @@ def team_smoke(admin, expire):
     member, member_info = user(admin, "member")
     other, other_info = user(admin, "other")
     require(member.api("GET", "/api/user/self")["quota"] == 0, "new user has zero personal quota")
-    key, bearer = token(member, "team-spending")
-    policy = "/api/team-key-policies/" + str(key["id"])
-    require(member.api("GET", policy)["mode"] == "legacy", "a user without a team keeps personal/native funding")
-    team = admin.api("POST", "/api/teams", {"name": "Acceptance A", "admin_user_id": manager_info["id"], "daily_limit": None, "weekly_limit": None})
+    require(member.api("GET", "/api/user/self/groups") == {}, "a user without a team has no groups")
+    member.denied("POST", "/api/token/", {"name":"unassigned-denied", "group":"default", "expired_time":-1, "unlimited_quota":True})
+    team = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name": "Acceptance A", "admin_user_id": manager_info["id"], "daily_limit": None, "weekly_limit": None})
     require(team["allow_personal_backup"] is True, "new team allows personal backup by explicit server default")
-    team2 = admin.api("POST", "/api/teams", {"name": "Acceptance B", "admin_user_id": other_info["id"]})
+    team2 = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name": "Acceptance B", "admin_user_id": other_info["id"]})
     path = "/api/teams/" + str(team["id"])
     foreign = "/api/teams/" + str(team2["id"])
     manager.denied("POST", "/api/teams", {"name": "forbidden"})
@@ -220,6 +226,8 @@ def team_smoke(admin, expire):
     joined = member.api("POST", invpath + "/accept")
     repeated = member.api("POST", invpath + "/accept")
     require(joined["id"] == repeated["id"], "same-user acceptance is idempotent")
+    key, bearer = token(member, "team-spending")
+    policy = "/api/team-key-policies/" + str(key["id"])
     accepted_invites = manager.api("GET", path + "/invitations")
     accepted_invite = next(row for row in accepted_invites if row["id"] == invite["invitation"]["id"])
     require(accepted_invite["accepted_username"] == member_info["username"] and accepted_invite["used_at"] > 0, "manager invitation list identifies the accepting username and time")
@@ -250,6 +258,8 @@ def team_smoke(admin, expire):
     require(manager.api("GET", path)["team"]["balance"] == 1000000, "system directly credits team wallet")
     member_detail = member.api("GET", path)
     member_list = next(row for row in member.api("GET", "/api/teams") if row["id"] == team["id"])
+    require(member_detail["team"]["allowed_groups"] == ["default"] and member_detail["team"]["default_group"] == "default", "member detail projects resource grants")
+    require(member_list["allowed_groups"] == ["default"] and member_list["default_group"] == "default", "member list projects resource grants")
     require("balance" not in member_detail["team"] and "budget" not in member_detail and "balance" not in member_list, "member list and detail APIs exclude shared wallet and global consumption")
     require(manager.api("GET", "/api/user/self")["role"] == 1, "team manager remains native ordinary user")
     effective = member.api("GET", policy)
@@ -407,7 +417,7 @@ def team_smoke(admin, expire):
 def per_member_allowance_smoke(admin):
     manager, info_a = user(admin, "allowance-a")
     member, info_b = user(admin, "allowance-b")
-    team = admin.api("POST", "/api/teams", {"name":"Per-member allowance", "admin_user_id":info_a["id"], "daily_limit":14, "weekly_limit":28})
+    team = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name":"Per-member allowance", "admin_user_id":info_a["id"], "daily_limit":14, "weekly_limit":28})
     path = "/api/teams/" + str(team["id"])
     invitation = manager.api("POST", path + "/invitations", {"valid_days":7})
     member.api("POST", "/api/team-invitations/" + invitation["token"] + "/accept")
@@ -445,7 +455,7 @@ def per_member_allowance_smoke(admin):
 
 def postpaid_smoke(admin):
     member, info = user(admin, "postpaid")
-    team = admin.api("POST", "/api/teams", {"name": "Postpaid acceptance", "admin_user_id": info["id"], "daily_limit": 5, "weekly_limit": 5})
+    team = admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name": "Postpaid acceptance", "admin_user_id": info["id"], "daily_limit": 5, "weekly_limit": 5})
     path = "/api/teams/" + str(team["id"])
     admin.api("POST", path + "/quota", {"mode": "add", "value": 5, "reason": "postpaid fixture", "operation_id": "postpaid-fund"})
     key, bearer = token(member, "Codex postpaid")
@@ -494,7 +504,7 @@ def channel_pricing_smoke(admin):
     admin.api("PUT", "/api/option/", {"key":group_key,"value":json.dumps(groups)})
     for name,factor in zip(models,(0.3,0.5,1)):
         admin.api("POST", "/api/channel/", {"mode":"single","channel":{"type":1,"name":name,"key":"isolated-acceptance-upstream-key","base_url":"http://mock-upstream:8080","models":name,"model_mapping":json.dumps({name:MODEL}),"group":"default","status":1,"setting":json.dumps({"sales_multiplier":factor})}})
-    team=admin.api("POST", "/api/teams", {"name":"Pricing acceptance","admin_user_id":info["id"],"daily_limit":1000000,"weekly_limit":2000000})
+    team=admin.api("POST", "/api/teams", {"allowed_groups":["default"], "default_group":"default", "name":"Pricing acceptance","admin_user_id":info["id"],"daily_limit":1000000,"weekly_limit":2000000})
     path="/api/teams/"+str(team["id"])
     admin.api("POST",path+"/quota",{"mode":"add","value":1000000,"reason":"isolated pricing fixture","operation_id":"pricing-fixture"})
     key,bearer=token(member,"pricing",model_limits=",".join(models))
@@ -534,6 +544,67 @@ def command(args, env, evidence, name):
     (evidence / (name + ".log")).write_text(redact(result.stdout), encoding="utf-8")
     require(result.returncode == 0, name + " failed; inspect local evidence")
     return result.stdout.strip()
+
+
+
+def shared_team_group_smoke(admin):
+    member, info = user(admin, "shared-group-member")
+    options = admin.api("GET", "/api/option/")
+    group_key = "group_ratio_setting.group_ratio"
+    original = next(row["value"] for row in options if row["key"] == group_key)
+    development, testing, boot = "开发", "测试", "boot"
+    try:
+        # Deliberately remove the native named default group. Both payment paths
+        # must work from team grants instead of a hidden User.Group fallback.
+        admin.api("PUT", "/api/option/", {"key":group_key,"value":json.dumps({development:1,testing:1.5,boot:1.5})})
+        admin.api("POST", "/api/channel/", {"mode":"single","channel":{"type":1,"name":"Shared grants channel","key":"isolated-acceptance-upstream-key","base_url":"http://mock-upstream:8080","models":MODEL,"group":",".join((development,testing,boot)),"status":1}})
+        require(member.api("GET", "/api/user/self/groups") == {}, "no team means no selectable groups even when real groups exist")
+        admin.api("POST", "/api/user/manage", {"id":info["id"],"action":"add_quota","mode":"add","value":1000000})
+        member.denied("POST", "/api/token/", {"name":"unassigned-personal","group":development,"expired_time":-1,"unlimited_quota":True})
+        team = admin.api("POST", "/api/teams", {"name":"Shared resource grants","admin_user_id":info["id"],"allowed_groups":[development,testing,boot],"default_group":development,"daily_limit":14})
+        path = "/api/teams/"+str(team["id"])
+        require(set(member.api("GET", "/api/user/self/groups")) - {"auto"} == {development,testing,boot}, "all three granted groups visible without adding native default")
+        member.denied("PUT", path, {"allowed_groups":["default"],"default_group":"default"})
+        admin.api("POST", path+"/quota", {"mode":"add","value":100,"reason":"shared resource fixture","operation_id":"shared-resources"})
+        key,bearer = token(member,"shared-payer-key",group=development)
+        # Same key, same model and group: first team, then personal once the
+        # per-member team allowance is exhausted. No client configuration change.
+        require(relay(member,bearer)[0] == 200, "team payment uses team-provided nonnative group")
+        require(settled_balance(member,path,86) == 86, "shared group team charge")
+        require(relay(member,bearer)[0] == 200, "same key automatically uses personal funds on same group")
+        require(settled_quota(member,1000000-14) == 1000000-14, "personal wallet charged without team cap")
+        logs=member.api("GET","/api/log/self?type=2&p=1&page_size=100")["items"]
+        sources={json.loads(row["other"])["billing_source"] for row in logs}
+        require(sources == {"team","wallet"} and all(row["group"]==development for row in logs), "actual log source changes while selected group stays identical")
+        ledger=member.api("GET",path+"/usage?page=1&page_size=100")["items"]
+        require(any(row.get("using_group")==development and row.get("channel_name") for row in ledger), "team ledger snapshots actual group and channel")
+        auto_key,auto_bearer=token(member,"shared-granted-auto",group="auto",auto_groups=[development,testing])
+        member.api("PUT","/api/team-key-policies/"+str(auto_key["id"]),{"mode":"personal_only"})
+        member.api("PUT","/api/team-key-policies/"+str(key["id"]),{"mode":"personal_only"})
+        admin.api("PUT",path,{"allowed_groups":[testing,boot],"default_group":testing,"daily_limit":None})
+        require(relay(member,bearer)[0] == 403, "revoked group blocks old personal-only key without charging")
+        require(set(member.api("GET","/api/user/self/groups")) - {"auto"} == {testing,boot}, "revocation immediately filters selection")
+        new_key,new_bearer=token(member,"inherited-shared-group",group="")
+        member.api("PUT","/api/team-key-policies/"+str(new_key["id"]),{"mode":"personal_only"})
+        require(relay(member,new_bearer)[0] == 200, "empty key group inherits real team default selection")
+        require(settled_quota(member,1000000-35) == 1000000-35, "testing personal charge uses 1.5x group price")
+        boot_key,boot_bearer=token(member,"boot-group",group=boot)
+        member.api("PUT","/api/team-key-policies/"+str(boot_key["id"]),{"mode":"personal_only"})
+        require(relay(member,boot_bearer)[0] == 200, "boot group uses same channel at its own price")
+        require(settled_quota(member,1000000-56) == 1000000-56, "boot personal charge uses 1.5x group price")
+        all_logs=admin.api("GET","/api/log/?type=2&p=1&page_size=100")["items"]
+        scoped=[row for row in all_logs if row["user_id"]==info["id"]]
+        require(len(scoped)==4 and len({row["channel"] for row in scoped})==1, "all payment sources and all groups share one actual channel")
+        require(sorted(row["quota"] for row in scoped)==[14,14,21,21], "development 1x testing/boot 1.5x actual fees")
+        require(relay(member,auto_bearer)[0] == 200, "Auto drops revoked development and uses granted testing")
+        require(settled_quota(member,1000000-77) == 1000000-77, "Auto uses the actual remaining authorized group's 1.5x price")
+        admin.api("PUT",path,{"allowed_groups":[],"default_group":""})
+        require(member.api("GET","/api/user/self/groups") == {}, "clearing all team grants is deny-all")
+        require(relay(member,new_bearer)[0] == 403, "no implicit default when grants cleared")
+        require(relay(member,auto_bearer)[0] == 403, "Auto cannot escape an empty grant profile")
+        return ["shared team grants for both payment sources", "no named default implicit grant", "no-team empty scope", "single-key source switch preserves group", "revocation and actual route snapshots"]
+    finally:
+        admin.api("PUT", "/api/option/", {"key":group_key,"value":original})
 
 
 def matrix(args):
@@ -630,6 +701,7 @@ def matrix(args):
                 per_member_allowance_smoke(admin)
                 postpaid_smoke(admin)
                 pricing_snapshot = channel_pricing_smoke(admin)
+                group_checks = shared_team_group_smoke(admin)
                 team_indexes = indexes("with-team-data")
                 command(compose + ["up", "-d", "--force-recreate", "--no-deps", "app"], env, case, "restart-with-team-data")
                 wait_ready(base)
@@ -644,7 +716,7 @@ def matrix(args):
                 require(len(admin.api("GET", team_path + "/usage")) == team_snapshot["usage_count"], "restart preserves funding snapshots")
                 require(admin.api("GET", "/api/user/" + str(team_snapshot["member_id"]))["quota"] == team_snapshot["member_quota"], "restart preserves independent personal wallet")
                 require(team_indexes <= indexes("after-team-restart"), "restart preserves all team uniqueness definitions")
-                results.append({"engine": engine, "scenario": scenario, "success": True, "checks": team_snapshot["checks"] + ["restart preserves team data and uniqueness"]})
+                results.append({"engine": engine, "scenario": scenario, "success": True, "checks": team_snapshot["checks"] + group_checks + ["restart preserves team data and uniqueness"]})
                 print(engine + " " + scenario + ": passed", flush=True)
             except Exception as error:
                 results.append({"engine": engine, "scenario": scenario, "success": False, "error": str(error)})

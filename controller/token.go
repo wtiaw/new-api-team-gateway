@@ -123,7 +123,9 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 			return false
 		}
 		seen[group] = struct{}{}
-		if !service.IsUserSelectableGroup(userGroup, group) {
+		authorized, authErr := service.GetAccountUsableGroups(c.GetInt("id"), userGroup)
+		_, allowed := authorized[group]
+		if authErr != nil || !allowed || group == "auto" {
 			common.ApiErrorT(c, "Auto group {{group}} is unavailable or unauthorized", map[string]any{"group": group})
 			return false
 		}
@@ -199,7 +201,7 @@ func GetTokenAutoGroups(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"groups":    service.GetUserAutoGroup(userGroup),
+		"groups":    service.GetAccountAutoGroups(c, c.GetInt("id"), userGroup),
 		"max_count": setting.GetMaxTokenAutoGroups(),
 	})
 }
@@ -350,6 +352,15 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorT(c, "Maximum number of tokens reached ({{max}})", map[string]any{"max": maxTokens})
 		return
 	}
+	userGroup, groupErr := getTokenRequestUserGroup(c)
+	if groupErr != nil {
+		common.ApiError(c, groupErr)
+		return
+	}
+	if _, groupErr = service.ResolveAccountGroup(c.GetInt("id"), 0, userGroup, token.Group); groupErr != nil {
+		common.ApiError(c, groupErr)
+		return
+	}
 	if token.Group == "auto" {
 		if !setTokenAutoGroups(c, &token, request.AutoGroups.Groups) {
 			return
@@ -449,6 +460,17 @@ func UpdateToken(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if statusOnly == "" || token.Status == common.TokenStatusEnabled {
+		userGroup, groupErr := getTokenRequestUserGroup(c)
+		if groupErr != nil {
+			common.ApiError(c, groupErr)
+			return
+		}
+		if _, groupErr = service.ResolveAccountGroup(c.GetInt("id"), 0, userGroup, token.Group); groupErr != nil {
+			common.ApiError(c, groupErr)
+			return
+		}
 	}
 	params["name"] = cleanToken.Name
 	previous := *cleanToken

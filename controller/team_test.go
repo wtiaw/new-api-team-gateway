@@ -7,12 +7,17 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTeamResponsesHideSharedFundsFromMembers(t *testing.T) {
+	originalRatios := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"开发":1,"测试":1.5}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios)) })
+
 	db := setupManageUserTestDB(t)
 	require.NoError(t, model.MigrateTeams(db))
 	require.NoError(t, model.MigrateTeamFunding(db))
@@ -24,7 +29,7 @@ func TestTeamResponsesHideSharedFundsFromMembers(t *testing.T) {
 	for i := range users {
 		require.NoError(t, db.Create(&users[i]).Error)
 	}
-	team, err := model.CreateTeam(users[0].Id, 10, model.TeamCreate{Name: "Team", AdminUserID: users[1].Id, DailyLimit: new(int64(2500000)), WeeklyLimit: new(int64(12500000))})
+	team, err := model.CreateTeam(users[0].Id, 10, model.TeamCreate{Name: "Team", AllowedGroups: []string{"开发", "测试"}, DefaultGroup: "开发", AdminUserID: users[1].Id, DailyLimit: new(int64(2500000)), WeeklyLimit: new(int64(12500000))})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(team).Update("balance", 9876543).Error)
 	require.NoError(t, db.Create(&model.TeamMember{TeamID: team.ID, UserID: users[2].Id, Role: "member", Status: 1}).Error)
@@ -63,6 +68,8 @@ func TestTeamResponsesHideSharedFundsFromMembers(t *testing.T) {
 						assert.Contains(t, detail, "budget")
 					}
 				}
+				assert.Equal(t, []any{"开发", "测试"}, visible["allowed_groups"], "every role needs the persisted resource grant profile")
+				assert.Equal(t, "开发", visible["default_group"])
 				assert.EqualValues(t, 2500000, visible["daily_limit"])
 				assert.EqualValues(t, 12500000, visible["weekly_limit"])
 				if i == 2 {

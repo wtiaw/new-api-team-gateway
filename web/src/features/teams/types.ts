@@ -54,6 +54,8 @@ export interface Team {
   daily_limit: number | null
   weekly_limit: number | null
   allow_personal_backup?: boolean
+  allowed_groups?: string[]
+  default_group?: string
 }
 export interface TeamDetail {
   team: Team
@@ -85,6 +87,9 @@ export interface TeamInvitation {
   created_at: number
 }
 export interface TeamUsage {
+  using_group?: string
+  channel_id?: number
+  channel_name?: string
   username?: string
   token_name?: string
   request_id: string

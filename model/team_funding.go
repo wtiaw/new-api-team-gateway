@@ -22,6 +22,9 @@ var (
 // TeamFundingReservation is the durable source and original-period snapshot.
 // Wallet balance excludes Reserved while in flight; Actual is charged at settlement.
 type TeamFundingReservation struct {
+	UsingGroup       string `json:"using_group,omitempty" gorm:"type:varchar(128)"`
+	ChannelID        int    `json:"channel_id,omitempty"`
+	ChannelName      string `json:"channel_name,omitempty" gorm:"type:varchar(255)"`
 	RequestID        string `json:"request_id" gorm:"primaryKey;type:varchar(128)"`
 	TeamID           int    `json:"team_id" gorm:"index:idx_team_funding_period"`
 	UserID           int    `json:"user_id" gorm:"index"`
@@ -376,4 +379,9 @@ func GetTeamRefundLiability(tx *gorm.DB, teamID int) (int64, error) {
 
 func CloseTeamFundingRefundWindow(requestID string) error {
 	return DB.Model(&TeamFundingReservation{}).Where("request_id = ? AND state = ?", requestID, "settled").Update("refundable", false).Error
+}
+
+// RecordTeamFundingRoute snapshots the actual route, independent of later channel renames.
+func RecordTeamFundingRoute(requestID, group string, channelID int, channelName string) error {
+	return DB.Model(&TeamFundingReservation{}).Where("request_id = ?", requestID).Updates(map[string]any{"using_group": group, "channel_id": channelID, "channel_name": channelName}).Error
 }

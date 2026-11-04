@@ -25,6 +25,10 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 		Quota:    100,
 	}
 	require.NoError(t, model.DB.Create(&user).Error)
+	team := model.Team{Name: "Model listing grants", Status: 1, AllowPersonalBackup: true, AllowedGroups: []string{"default"}, DefaultGroup: "default"}
+	require.NoError(t, model.DB.Create(&team).Error)
+	require.NoError(t, model.DB.Create(&model.TeamMember{TeamID: team.ID, UserID: user.Id, Status: 1, Role: "member"}).Error)
+
 	require.NoError(t, model.DB.Create(&model.Token{
 		UserId:         user.Id,
 		Key:            "modelstestkey",

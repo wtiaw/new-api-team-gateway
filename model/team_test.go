@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
@@ -500,4 +501,33 @@ func TestTeamInvitationListShowsAcceptorWithoutLeakingSecrets(t *testing.T) {
 	rows, err = ListTeamInvitations(team.ID, admin.Id, 1)
 	require.NoError(t, err)
 	require.Equal(t, member.Username, rows[0].AcceptedUsername)
+}
+
+func TestTeamGroupGrantsAreSystemManaged(t *testing.T) {
+	sys, admin, _, team := setupTeamTest(t)
+	old := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"development":1,"testing":2}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(old)) })
+	groups := []string{"development", "testing"}
+	defaultGroup := "development"
+	_, err := UpdateTeam(team.ID, admin.Id, 1, TeamUpdate{AllowedGroups: &groups, DefaultGroup: &defaultGroup})
+	require.ErrorIs(t, err, ErrTeamAccess)
+	updated, err := UpdateTeam(team.ID, sys.Id, 10, TeamUpdate{AllowedGroups: &groups, DefaultGroup: &defaultGroup})
+	require.NoError(t, err)
+	require.Equal(t, groups, updated.AllowedGroups)
+	require.Equal(t, defaultGroup, updated.DefaultGroup)
+	for _, invalid := range []TeamUpdate{
+		{AllowedGroups: new([]string{"auto"}), DefaultGroup: new("auto")},
+		{AllowedGroups: new([]string{"development", "development"})},
+		{AllowedGroups: new([]string{"missing"})},
+		{DefaultGroup: new("testing-missing")},
+		{AllowedGroups: new([]string{})},
+	} {
+		_, err = UpdateTeam(team.ID, sys.Id, 10, invalid)
+		require.ErrorIs(t, err, ErrTeamInput)
+	}
+	updated, err = UpdateTeam(team.ID, sys.Id, 10, TeamUpdate{AllowedGroups: new([]string{}), DefaultGroup: new("")})
+	require.NoError(t, err)
+	require.Empty(t, updated.AllowedGroups)
+	require.Empty(t, updated.DefaultGroup)
 }

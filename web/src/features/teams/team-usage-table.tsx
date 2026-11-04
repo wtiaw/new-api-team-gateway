@@ -87,6 +87,8 @@ function UsageDetails({
         : label.keyName(row),
     ],
     [t('Model'), row.model_name || '-'],
+    ...(row.using_group ? [[t('Group'), row.using_group]] : []),
+    ...(row.channel_name ? [[t('Channel'), row.channel_name]] : []),
     [t('Time'), dayjs.unix(row.created_at).format('YYYY-MM-DD HH:mm:ss')],
     [t('Actual cost'), actualCost(row)],
     [t('Actual funding source'), label.source(row)],
@@ -213,9 +215,10 @@ export function TeamUsageTable(props: { rows: TeamUsage[] }) {
                   className='text-muted-foreground truncate font-mono!'
                   title={row.request_id}
                 >
-                  {row.request_id.length > 18
-                    ? `…${row.request_id.slice(-8)}`
-                    : row.request_id}
+                  {row.using_group ||
+                    (row.request_id.length > 18
+                      ? `…${row.request_id.slice(-8)}`
+                      : row.request_id)}
                 </p>
               </div>
             ),

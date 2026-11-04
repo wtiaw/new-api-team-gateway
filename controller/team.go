@@ -47,7 +47,8 @@ func teamPublicView(team model.Team, role string) gin.H {
 		"id": team.ID, "name": team.Name, "role": role, "status": team.Status,
 		"daily_limit": team.DailyLimit, "weekly_limit": team.WeeklyLimit,
 		"allow_personal_backup": team.AllowPersonalBackup,
-		"created_at":            team.CreatedAt, "updated_at": team.UpdatedAt,
+		"allowed_groups":        team.AllowedGroups, "default_group": team.DefaultGroup,
+		"created_at": team.CreatedAt, "updated_at": team.UpdatedAt,
 	}
 	if role != "member" {
 		view["balance"] = team.Balance

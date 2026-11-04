@@ -125,7 +125,7 @@ describe('API key group table cell', () => {
 
   test('labels the user group multiplier as inherited without inventing a numeric value', async () => {
     render(<CellHarness group='' />)
-    expect(screen.getByText('User Group')).toBeInTheDocument()
+    expect(screen.getByText('Default selection')).toBeInTheDocument()
     expect(screen.getByText('Inherited')).toBeInTheDocument()
     expect(screen.getByText('Inherited').parentElement).toHaveClass(
       'border-muted-foreground/30',
@@ -133,7 +133,7 @@ describe('API key group table cell', () => {
     )
     expect(screen.queryByText('1x')).not.toBeInTheDocument()
     await userEvent.tab()
-    expect(await screen.findByText('Follow user group')).toBeVisible()
+    expect(await screen.findByText('Follow default selection')).toBeVisible()
   })
 
   test('keeps a long group name and exact multiplier available through keyboard focus', async () => {

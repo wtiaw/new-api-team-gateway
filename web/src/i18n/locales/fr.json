@@ -7537,6 +7537,17 @@
     "Member weekly team allowance reached": "Member weekly team allowance reached",
     "Member / API Key": "Membre / clé API",
     "Usage record details": "Détails de l’utilisation",
-    "Copy request ID": "Copier l’ID de requête"
+    "Copy request ID": "Copier l’ID de requête",
+    "Team routing groups": "Groupes autorisés de l’équipe",
+    "Team allowed groups": "Groupes autorisés",
+    "Default team group": "Sélection par défaut",
+    "Default selection": "Par défaut",
+    "Select a default from the allowed team groups": "Choisissez un groupe par défaut parmi les groupes autorisés",
+    "Personal and team payments use the same team-authorized groups. Changing the payer does not change the selected group.": "Les paiements personnels et d’équipe utilisent les mêmes groupes autorisés. Changer de payeur ne change pas le groupe choisi.",
+    "Only system administrators grant groups. Personal and team payments share these groups; users without a team have no group access.": "Seuls les administrateurs système autorisent les groupes, communs aux deux payeurs. Les utilisateurs ordinaires sans équipe n’y ont pas accès.",
+    "No groups granted. Members cannot call models until groups are assigned.": "Aucun groupe autorisé. Les membres ne peuvent pas appeler de modèle avant attribution.",
+    "The default selection must be an allowed group, such as Development. It does not create a group named default.": "Choisissez un groupe autorisé, par exemple Développement. Aucun groupe nommé default n’est créé.",
+    "Failed to load groups": "Impossible de charger les groupes",
+    "Follow default selection": "Suivre la sélection par défaut"
   }
 }

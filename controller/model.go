@@ -196,6 +196,13 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 		}
 	}
 
+	if c.GetInt("id") > 0 {
+		group, err := service.ResolveAccountGroup(c.GetInt("id"), c.GetInt("resource_team_id"), userGroup, tokenGroup)
+		if err != nil {
+			return modelListGroups{}, err
+		}
+		tokenGroup = group
+	}
 	if tokenGroup == "auto" {
 		return modelListGroups{
 			userGroup:   userGroup,

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -33,6 +34,17 @@ func ValidateTeamTokenPolicy(c *gin.Context, tokenID, userID int) error {
 	if err != nil {
 		return err
 	}
+	var token model.Token
+	if err := model.DB.Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
+		return err
+	}
+	group, err := ResolveAccountGroup(userID, policy.TeamID, common.GetContextKeyString(c, constant.ContextKeyUserGroup), token.Group)
+	if err != nil {
+		return err
+	}
+	c.Set("resource_team_id", policy.TeamID)
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, group)
+	common.SetContextKey(c, constant.ContextKeyTokenGroup, group)
 	return validateTeamFundingPolicy(c, policy)
 }
 
@@ -43,6 +55,13 @@ func ValidatePlaygroundTeamPolicy(c *gin.Context, userID int) error {
 	if err != nil {
 		return err
 	}
+	group, err := ResolveAccountGroup(userID, policy.TeamID, common.GetContextKeyString(c, constant.ContextKeyUserGroup), common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+	if err != nil {
+		return err
+	}
+	c.Set("resource_team_id", policy.TeamID)
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, group)
+	common.SetContextKey(c, constant.ContextKeyTokenGroup, group)
 	return validateTeamFundingPolicy(c, policy)
 }
 
@@ -91,9 +110,16 @@ func (f *TeamFunding) PreConsume(amount int) error {
 		return err
 	}
 	f.info.TeamID, f.info.TeamReservationID = f.teamID, record.RequestID
+	if err := f.recordRoute(); err != nil {
+		common.SysError("record team funding route: " + err.Error())
+	}
+
 	return nil
 }
 func (f *TeamFunding) Settle(delta int) error {
+	if err := f.recordRoute(); err != nil {
+		common.SysError("record team funding route: " + err.Error())
+	}
 	if err := model.SettleTeamFunding(f.info.TeamReservationID, int64(delta)); err != nil {
 		return err
 	}
@@ -176,4 +202,19 @@ func newPolicyBillingSession(c *gin.Context, info *relaycommon.RelayInfo, quota 
 	default:
 		return nil, apiError(fmt.Errorf("Unknown team funding policy"))
 	}
+}
+
+func (f *TeamFunding) recordRoute() error {
+	name := ""
+	channelID := 0
+	if f.info.ChannelMeta != nil {
+		channelID = f.info.ChannelId
+	}
+	if channelID > 0 {
+		channel, err := model.CacheGetChannel(channelID)
+		if err == nil && channel != nil {
+			name = channel.Name
+		}
+	}
+	return model.RecordTeamFundingRoute(f.info.TeamReservationID, f.info.UsingGroup, channelID, name)
 }
