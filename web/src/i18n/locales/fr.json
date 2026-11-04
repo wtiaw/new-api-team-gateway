@@ -7554,6 +7554,8 @@
     "The selected group determines the team. Changing payment preference does not change group access.": "Le groupe sélectionné détermine l’équipe. Le mode de paiement ne modifie pas les droits d’accès au groupe.",
     "A resource group can only belong to one team": "Un groupe de ressources ne peut appartenir qu’à une seule équipe.",
     "Select a resource group to match a team": "Sélectionnez un groupe de ressources pour déterminer l’équipe.",
-    "Each resource group belongs to one team. Users can join multiple teams.": "Chaque groupe de ressources appartient à une équipe. Les utilisateurs peuvent rejoindre plusieurs équipes."
+    "Each resource group belongs to one team. Users can join multiple teams.": "Chaque groupe de ressources appartient à une équipe. Les utilisateurs peuvent rejoindre plusieurs équipes.",
+    "Group pricing must contain non-negative numbers": "Les tarifs des groupes doivent être des nombres positifs ou nuls",
+    "Conflicting group pricing settings": "Conflit entre les paramètres de tarification des groupes"
   }
 }

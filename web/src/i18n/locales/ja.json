@@ -7554,6 +7554,8 @@
     "The selected group determines the team. Changing payment preference does not change group access.": "選択したグループでチームが決まります。支払い方法を変えてもグループのアクセス権限は変わりません。",
     "A resource group can only belong to one team": "リソースグループは1つのチームにのみ属します。",
     "Select a resource group to match a team": "リソースグループを選択してチームを指定してください。",
-    "Each resource group belongs to one team. Users can join multiple teams.": "各リソースグループは1つのチームに属します。ユーザーは複数のチームに参加できます。"
+    "Each resource group belongs to one team. Users can join multiple teams.": "各リソースグループは1つのチームに属します。ユーザーは複数のチームに参加できます。",
+    "Group pricing must contain non-negative numbers": "グループ料金には0以上の数値を指定してください",
+    "Conflicting group pricing settings": "グループ料金設定が競合しています"
   }
 }

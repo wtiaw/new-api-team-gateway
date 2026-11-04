@@ -702,6 +702,29 @@ def multi_team_group_smoke(admin):
     return ["multiple memberships", "exclusive group ownership", "same bearer group-based team matching", "independent member caps and wallets", "personal fallback never spends another team", "per-team revocation"]
 
 
+def group_pricing_sync_smoke(admin):
+    legacy, typed = "GroupRatio", "group_ratio_setting.group_ratio"
+    options = {row["key"]: row["value"] for row in admin.api("GET", "/api/option/")}
+    original = json.loads(options[legacy])
+    try:
+        expected = {**original, "console-sync": 1.25}
+        admin.api("PUT", "/api/option/", {"key": legacy, "value": json.dumps(expected)})
+        require(set(admin.api("GET", "/api/group/")) == set(expected), "channel group choices immediately follow console pricing")
+        values = {row["key"]: row["value"] for row in admin.api("GET", "/api/option/")}
+        require(json.loads(values[legacy]) == json.loads(values[typed]) == expected, "both option interfaces publish the same console save")
+        expected.pop("console-sync")
+        expected["typed-sync"] = 1.5
+        admin.api("PUT", "/api/option/", {"key": typed, "value": json.dumps(expected)})
+        for bad in ("null", "[]", '{"negative":-1}'):
+            admin.denied("PUT", "/api/option/", {"key": typed, "value": bad})
+        time.sleep(1.2)
+        values = {row["key"]: row["value"] for row in admin.api("GET", "/api/option/")}
+        require(json.loads(values[legacy]) == json.loads(values[typed]) == expected and set(admin.api("GET", "/api/group/")) == set(expected), "reload and rejected invalid writes cannot restore obsolete groups")
+    finally:
+        admin.api("PUT", "/api/option/", {"key": legacy, "value": json.dumps(original)})
+    return ["one group pricing registry across both APIs", "console save refreshes channel groups", "typed save and background reload stay coherent", "invalid group pricing is atomic"]
+
+
 def matrix(args):
     require(args.port != 18310, "live gateway port forbidden")
     engines = ["sqlite", "mysql", "postgres"] if args.engine == "all" else [args.engine]
@@ -761,14 +784,22 @@ def matrix(args):
                     admin = initialize(base, password)
                     if startup == 0:
                         snapshot = seed(admin)
+                        if scenario == "upgrade":
+                            # Seed the exact legacy/typed conflict seen on the
+                            # previous release while preserving its working key.
+                            snapshot["expected_groups"] = {"default": 1, "current-console": 1.5}
+                            admin.api("PUT", "/api/option/", {"key":"GroupRatio", "value":json.dumps(snapshot["expected_groups"])})
+                            admin.api("PUT", "/api/option/", {"key":"group_ratio_setting.group_ratio", "value":json.dumps({"default":1,"obsolete-typed":7})})
                         original_indexes = indexes(startup)
                     else:
                         verify_legacy(admin, snapshot)
+                        if scenario == "upgrade":
+                            require(set(admin.api("GET", "/api/group/")) == set(snapshot["expected_groups"]), "upgraded channel groups retain current console pricing rather than stale typed rows")
                         require(original_indexes <= indexes(startup), "startup preserves original database indexes and uniqueness definitions")
                     command(compose + ["logs", "--no-color", "app"], env, case, "migration-" + str(startup))
                 if not args.skip_model_tests:
                     dsn = env["TEST_SQL_DSN"].replace(":5432/acceptance", ":5432/acceptance_models").replace("/acceptance?", "/acceptance_models?")
-                    go = ["docker", "run", "--rm", "--network", project + "_default", "-e", "TEAM_TEST_DSN=" + dsn, "-e", "TEAM_TEST_DIALECT=" + engine, "-e", "GOWORK=off", "-e", "GOMAXPROCS=2", "-v", str(ROOT) + ":/source", "-v", "new-api-team-gateway-gomod:/go/pkg/mod", "-v", "new-api-team-gateway-gocache:/root/.cache/go-build", "-w", "/source", GO_IMAGE, "go", "test", "./model", "-run", "TestTeam", "-count=1", "-v"]
+                    go = ["docker", "run", "--rm", "--network", project + "_default", "-e", "TEAM_TEST_DSN=" + dsn, "-e", "TEAM_TEST_DIALECT=" + engine, "-e", "GOWORK=off", "-e", "GOMAXPROCS=2", "-v", str(ROOT) + ":/source", "-v", "new-api-team-gateway-gomod:/go/pkg/mod", "-v", "new-api-team-gateway-gocache:/root/.cache/go-build", "-w", "/source", GO_IMAGE, "go", "test", "./model", "-run", "TestTeam|TestGroupPricing", "-count=1", "-v"]
                     command(go, env, case, "model-tests")
                     # Native role-change fixtures intentionally require loopback.
                     # Share only the isolated SQL container's network namespace;
@@ -793,6 +824,7 @@ def matrix(args):
                         mutation = compose + ["exec", "-T", "postgres", "psql", "-U", "acceptance", "-d", "acceptance", "-c", sql]
                     command(mutation, env, case, "expire-test-invitation")
                 team_snapshot = team_smoke(admin, expire)
+                pricing_sync_checks = group_pricing_sync_smoke(admin)
                 per_member_allowance_smoke(admin)
                 postpaid_smoke(admin)
                 pricing_snapshot = channel_pricing_smoke(admin)
@@ -812,7 +844,7 @@ def matrix(args):
                 require(len(admin.api("GET", team_path + "/usage")) == team_snapshot["usage_count"], "restart preserves funding snapshots")
                 require(admin.api("GET", "/api/user/" + str(team_snapshot["member_id"]))["quota"] == team_snapshot["member_quota"], "restart preserves independent personal wallet")
                 require(team_indexes <= indexes("after-team-restart"), "restart preserves all team uniqueness definitions")
-                results.append({"engine": engine, "scenario": scenario, "success": True, "checks": team_snapshot["checks"] + group_checks + multi_checks + ["restart preserves team data and uniqueness"]})
+                results.append({"engine": engine, "scenario": scenario, "success": True, "checks": team_snapshot["checks"] + group_checks + multi_checks + pricing_sync_checks + ["restart preserves team data and uniqueness"]})
                 print(engine + " " + scenario + ": passed", flush=True)
             except Exception as error:
                 results.append({"engine": engine, "scenario": scenario, "success": False, "error": str(error)})

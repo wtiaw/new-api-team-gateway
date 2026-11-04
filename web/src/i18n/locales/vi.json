@@ -7554,6 +7554,8 @@
     "The selected group determines the team. Changing payment preference does not change group access.": "Nhóm tài nguyên đã chọn xác định nhóm phụ trách. Đổi cách thanh toán không thay đổi quyền truy cập nhóm tài nguyên.",
     "A resource group can only belong to one team": "Một nhóm tài nguyên chỉ có thể thuộc về một nhóm phụ trách.",
     "Select a resource group to match a team": "Chọn nhóm tài nguyên để xác định nhóm phụ trách.",
-    "Each resource group belongs to one team. Users can join multiple teams.": "Mỗi nhóm tài nguyên thuộc về một nhóm phụ trách. Người dùng có thể tham gia nhiều nhóm."
+    "Each resource group belongs to one team. Users can join multiple teams.": "Mỗi nhóm tài nguyên thuộc về một nhóm phụ trách. Người dùng có thể tham gia nhiều nhóm.",
+    "Group pricing must contain non-negative numbers": "Giá nhóm phải là số không âm",
+    "Conflicting group pricing settings": "Cấu hình giá nhóm bị xung đột"
   }
 }

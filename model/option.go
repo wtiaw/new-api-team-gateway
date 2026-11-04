@@ -2,6 +2,7 @@ package model
 
 import (
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -206,11 +207,13 @@ func loadOptionsFromDatabase() {
 			common.SysError(common.LogText("invalid request policy: %s", err.Error()))
 		}
 	}()
+	groupPricingMutationMu.Lock()
+	defer groupPricingMutationMu.Unlock()
 	passkeyOptionMutex.Lock()
 	defer passkeyOptionMutex.Unlock()
 	options, _ := AllOption()
 	passkeyOptions := make(map[string]string)
-	for _, option := range options {
+	for _, option := range resolveStoredGroupPricingOptions(options) {
 		if IsPasskeyDomainOption(option.Key) {
 			passkeyOptions[option.Key] = option.Value
 			continue
@@ -275,6 +278,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if _, alias := groupPricingOptionPair(key); alias {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -312,8 +318,20 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	var err error
+	values, err = normalizeGroupPricingUpdates(values)
+	if err != nil {
+		return err
+	}
 	for key := range values {
 		if IsPasskeyDomainOption(key) {
+			if _, groupRatio := values["GroupRatio"]; groupRatio {
+				groupPricingMutationMu.Lock()
+				defer groupPricingMutationMu.Unlock()
+			} else if _, overrides := values["GroupGroupRatio"]; overrides {
+				groupPricingMutationMu.Lock()
+				defer groupPricingMutationMu.Unlock()
+			}
 			_, err := UpdatePasskeyDomainOptions(values, false, "")
 			return err
 		}
@@ -343,8 +361,16 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 	}
 
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
+	for key := range values {
+		if _, alias := groupPricingOptionPair(key); alias {
+			groupPricingMutationMu.Lock()
+			defer groupPricingMutationMu.Unlock()
+			break
+		}
+	}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		for _, k := range slices.Sorted(maps.Keys(values)) {
+			v := values[k]
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -379,6 +405,27 @@ func updateOptionMap(key string, value string) (err error) {
 	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	if pair, alias := groupPricingOptionPair(key); alias {
+		normalized, validationErr := normalizeGroupPricingValue(pair[0], value)
+		if validationErr != nil {
+			return validationErr
+		}
+		if pair[0] == "GroupRatio" {
+			err = ratio_setting.UpdateGroupRatioByJSONString(normalized)
+		} else {
+			err = ratio_setting.UpdateGroupGroupRatioByJSONString(normalized)
+		}
+		if err != nil {
+			return err
+		}
+		changed := common.OptionMap[pair[0]] != normalized || common.OptionMap[pair[1]] != normalized
+		common.OptionMap[pair[0]], common.OptionMap[pair[1]] = normalized, normalized
+		if changed {
+			InvalidatePricingCache()
+			ratio_setting.InvalidateExposedDataCache()
+		}
+		return nil
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
@@ -661,10 +708,6 @@ func updateOptionMap(key string, value string) (err error) {
 		common.DataExportDefaultTime = value
 	case "ModelRatio":
 		err = ratio_setting.UpdateModelRatioByJSONString(value)
-	case "GroupRatio":
-		err = ratio_setting.UpdateGroupRatioByJSONString(value)
-	case "GroupGroupRatio":
-		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
 	case "UserUsableGroups":
 		err = setting.UpdateUserUsableGroupsByJSONString(value)
 	case "CompletionRatio":

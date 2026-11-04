@@ -7554,6 +7554,8 @@
     "The selected group determines the team. Changing payment preference does not change group access.": "The selected group determines the team. Changing payment preference does not change group access.",
     "A resource group can only belong to one team": "A resource group can only belong to one team",
     "Select a resource group to match a team": "Select a resource group to match a team",
-    "Each resource group belongs to one team. Users can join multiple teams.": "Each resource group belongs to one team. Users can join multiple teams."
+    "Each resource group belongs to one team. Users can join multiple teams.": "Each resource group belongs to one team. Users can join multiple teams.",
+    "Group pricing must contain non-negative numbers": "Group pricing must contain non-negative numbers",
+    "Conflicting group pricing settings": "Conflicting group pricing settings"
   }
 }

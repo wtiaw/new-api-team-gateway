@@ -62,6 +62,23 @@ export function useUpdateOption() {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
 
+        if (
+          variables.key === 'GroupRatio' ||
+          variables.key === 'GroupGroupRatio' ||
+          variables.key.startsWith('group_ratio_setting.') ||
+          variables.key === 'UserUsableGroups' ||
+          variables.key === 'AutoGroups'
+        ) {
+          for (const key of [
+            'groups',
+            'user-groups',
+            'team-group-options',
+            'pricing',
+          ]) {
+            void queryClient.invalidateQueries({ queryKey: [key] })
+          }
+        }
+
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.has(variables.key)) {
           queryClient.invalidateQueries({ queryKey: ['status'] })

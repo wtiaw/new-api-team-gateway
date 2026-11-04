@@ -7554,6 +7554,8 @@
     "The selected group determines the team. Changing payment preference does not change group access.": "所選分組決定所屬團隊。切換付款方式不會改變分組權限。",
     "A resource group can only belong to one team": "一個資源分組只能歸屬一個團隊",
     "Select a resource group to match a team": "請選擇資源分組以確定所屬團隊",
-    "Each resource group belongs to one team. Users can join multiple teams.": "每個資源分組歸屬一個團隊，使用者可以加入多個團隊。"
+    "Each resource group belongs to one team. Users can join multiple teams.": "每個資源分組歸屬一個團隊，使用者可以加入多個團隊。",
+    "Group pricing must contain non-negative numbers": "分組定價必須為非負數",
+    "Conflicting group pricing settings": "分組定價設定存在衝突"
   }
 }
