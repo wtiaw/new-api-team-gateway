@@ -18,7 +18,9 @@ func useGroupPricingTestDB(t *testing.T) *gorm.DB {
 	if os.Getenv("TEAM_TEST_DIALECT") == "mysql" || os.Getenv("TEAM_TEST_DIALECT") == "postgres" {
 		setupTeamTest(t)
 		require.NoError(t, DB.AutoMigrate(&Option{}))
-		require.NoError(t, DB.Where("key IN ?", []string{"GroupRatio", "GroupGroupRatio", "group_ratio_setting.group_ratio", "group_ratio_setting.group_group_ratio", "SystemName"}).Delete(&Option{}).Error)
+		for _, key := range []string{"GroupRatio", "GroupGroupRatio", "group_ratio_setting.group_ratio", "group_ratio_setting.group_group_ratio", "SystemName"} {
+			require.NoError(t, DB.Where(&Option{Key: key}).Delete(&Option{}).Error)
+		}
 		return DB
 	}
 	db := useFrontendOptionMigrationDB(t)
@@ -80,7 +82,7 @@ func TestGroupPricingLegacyConflictHasDeterministicConsolePriority(t *testing.T)
 		require.JSONEq(t, `{"current-team":1.5}`, common.Interface2String(common.OptionMap["group_ratio_setting.group_ratio"]))
 	}
 	// A typed-only install still populates the console's compatibility field.
-	require.NoError(t, db.Delete(&Option{}, "key = ?", "GroupRatio").Error)
+	require.NoError(t, db.Where(&Option{Key: "GroupRatio"}).Delete(&Option{}).Error)
 	loadOptionsFromDatabase()
 	require.JSONEq(t, `{"obsolete-team":1}`, common.Interface2String(common.OptionMap["GroupRatio"]))
 }
