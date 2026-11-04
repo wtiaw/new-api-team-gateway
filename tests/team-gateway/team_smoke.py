@@ -163,11 +163,9 @@ def token(client, name, **extra):
 def resource_group(admin, name, ratio=1):
     """Give independent teams distinct grants, backed only by the mock fixture."""
     options = {row["key"]: row["value"] for row in admin.api("GET", "/api/option/")}
-    groups = json.loads(options.get("GroupRatio") or "{}")
-    groups.update(json.loads(options.get("group_ratio_setting.group_ratio") or "{}"))
+    groups = json.loads(options.get("group_ratio_setting.group_ratio") or options.get("GroupRatio") or "{}")
     groups[name] = ratio
-    for key in ("GroupRatio", "group_ratio_setting.group_ratio"):
-        admin.api("PUT", "/api/option/", {"key": key, "value": json.dumps(groups)})
+    admin.api("PUT", "/api/option/", {"key": "group_ratio_setting.group_ratio", "value": json.dumps(groups)})
     for kind, model in ((1, MODEL), (43, DEEPSEEK_MODEL)):
         admin.api("POST", "/api/channel/", {"mode": "single", "channel": {
             "type": kind, "name": "Isolated " + name + " " + str(kind),
