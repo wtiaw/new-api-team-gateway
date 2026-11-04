@@ -148,7 +148,10 @@ func TestTeamMembershipRequiredEvenForPersonalWallet(t *testing.T) {
 	groups, err = GetAccountUsableGroups(user.Id, "default")
 	require.NoError(t, err)
 	assert.Contains(t, groups, "development")
+	assert.Contains(t, groups, "testing")
 	assert.NotContains(t, groups, "default")
+	assert.NotContains(t, groups, "auto", "team selectors must contain only administrator-granted resource groups")
+	assert.Len(t, groups, len(team.AllowedGroups))
 	require.NoError(t, db.Model(&token).Update("group", "").Error)
 	for _, mode := range []string{"personal_only", "team_only", "personal_first", "team_first"} {
 		require.NoError(t, model.SetTeamKeyPolicy(token.Id, user.Id, model.TeamKeyPolicy{Mode: mode, TeamID: team.ID}))

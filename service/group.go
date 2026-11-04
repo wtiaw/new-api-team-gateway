@@ -152,9 +152,6 @@ func GetAccountUsableGroups(userID int, userGroup string) (map[string]string, er
 				groups[group] = setting.GetUsableGroupDescription(group)
 			}
 		}
-		if len(groups) > 0 {
-			groups["auto"] = setting.GetUsableGroupDescription("auto")
-		}
 	}
 	return groups, nil
 }

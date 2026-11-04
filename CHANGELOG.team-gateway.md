@@ -2,6 +2,10 @@
 
 本文件仅记录 fork 的团队扩展；上游发行说明见 [QuantumNous/new-api](https://github.com/QuantumNous/new-api/releases)。
 
+## team-v0.2.1 — 2026-11-04
+
+- 团队用户的分组选择器只返回系统管理员授权的实际分组，不再额外注入`auto`选项；旧Auto密钥仍受团队授权约束。
+
 ## team-v0.2.0 — 2026-11-04
 
 团队统一分组授权。
